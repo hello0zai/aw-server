@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "sd-server"
+version = "0.12.0"
+description = "Server for ActivityWatch"
+authors = ["Erik Bjäreholt <erik@bjareho.lt>"]
+license = "MPL-2.0"
+include = ["sd_server/static/*"]
+
+[tool.poetry.scripts]
+sd-server = "sd_server:main"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+aw-core = "^0.5.8"
+aw-client = "^0.5.8"
+flask = "^2.2"
+flask-restx = "^1.0.3"
+flask-cors = "*"
+importlib-metadata = {version = "*", python = "<3.10"}
+werkzeug = "^2.3.3"
+pyjwt="*"
+pandas="*"
+pdfkit="*"
+xlsxwriter="*"
+tzlocal="*"
+xhtml2pdf="*"
+reportlab="*"
+
+[tool.poetry.dev-dependencies]
+mypy = "*"
+pytest = "^7.3"
+pytest-flask = "*"
+pytest-benchmark = "*"
+pytest-cov = "*"
+types-Werkzeug = "*"
+types-pkg-resources = "*"
+types-Flask = "*"
+black = "^23.3.0"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--cov-report=term --cov-report=xml --cov-report=html --cov=sd_server"
+python_files = ["*.py",]
+
+[tool.ruff]
+ignore = ["E402", "E501"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
