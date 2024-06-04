@@ -450,14 +450,22 @@ class RalvieLoginResource(Resource):
         if auth_result.status_code == 200 and json.loads(auth_result.text)["code"] == 'UASI0011':
             # Retrieve Cached User Credentials
             cached_credentials = cache_user_credentials(cache_key, "SD_KEYS")
-
+            token = json.loads(auth_result.text)["data"]["access_token"]
+            store_access_token(cache_key,token)
             # Get the User Key
+            access_token=get_access_token(cache_key)
+            SD_KEYS = {
+                "userId": access_token
+            }
+            print("Access token ravie",access_token)
+            store_credentials(cache_key, SD_KEYS)
             user_key = cached_credentials.get("encrypted_db_key") if cached_credentials else None
 
             # This function is used to get user credentials from the user_key
             if user_key is None:
                 token = json.loads(auth_result.text)["data"]["access_token"]
                 refresh_token = json.loads(auth_result.text)["data"]["refresh_token"]
+                store_credentials(cache_key, SD_KEYS)
                 user_id = json.loads(auth_result.text)["data"]["id"]
                 current_app.api.get_user_credentials(user_id, 'Bearer ' + token)
                 init_db = current_app.api.init_db()
@@ -1554,6 +1562,10 @@ class SyncServer(Resource):
     def get(self):
         try:
             status = current_app.api.sync_events_to_ralvie()
+
+            app_sync_status=current_app.api.sync_application_to_ralvie()
+
+            print(app_sync_status)
 
             if status['status'] == "success":
                 return {"message": "Data has been synced successfully"}, 200
