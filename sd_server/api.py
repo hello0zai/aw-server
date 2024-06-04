@@ -367,61 +367,18 @@ class ServerAPI:
         return self._post(endpoint, data,{"Authorization" : token})
         # return self._post(endpoint, data,{"Authorization" : token})
     
-    
-    def sync_application_to_ralvie(self) -> Dict[str, str]:
+    def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
             cache_key = "Sundial"
             cached_credentials = get_credentials(cache_key)
             access_token = cached_credentials['token']
             companyId=cached_credentials['companyId']
-
             if not userId:
                 time.sleep(300)
                 userId = load_key("userId")  # Load userId again after waiting if not already loaded
-
-            app_data = self.get_non_sync_application_details()
-
-            print("app data",app_data)
-
-            if app_data is not None:
-                for data in app_data:
-                    if data and userId:
-                        print("Total apps:", len(data))
-                        # response = self.sync_appdata_to_ralvie(data,access_token)  # Send the data directly without wrapping in a "data" key
-                        # payload = {"userId": userId,"name":data['name'],"companyId": "8a8682858dd5a68e018de8a768fb58f1", 'url': data['url'] if data['url'] else '','type': 'Browser' if data['url'] else 'Application','alias':data['alias'],'criteria':data['criteria'],"blocked":data['is_blocked'],"ignoreIdleTime":data['is_ignore_idle_time'],"createdAt":data['created_at'],"updatedAt":data['updated_at']}
-                        payload = {"userId": userId,"name":data['name'],"companyId": companyId, 'url': data['url'] if data['url'] else '','type': 'Browser' if data['url'] else 'Application','alias':data['alias'],'criteria':data['criteria'],"blocked":data['is_blocked'],"ignoreIdleTime":data['is_ignore_idle_time']}
-                        
-                        # endpoint = "/web/application"
-                        print(data['name'])
-                        # payload = {"userId": userId,"name":data['name'],"companyId": "8a8682858dd5a68e018de8a768fb58f1",'type': 'Browser' if data.url else 'Application','alias':data.alias}
-
-                        response = self.sync_appdata_to_ralvie(payload,access_token)  # Send the data directly without wrapping in a "data" key
-                        print(response)
-                        if response.status_code == 200:
-                            response_data = json.loads(response.text)
-                            if response_data["code"] == 'RCI0000':
-                                print("data synced to ralvie successfully")
-                                return {"status": "success"}
-                            else:
-                                return {"status": "failed"}
-            else:
-                return None
-
-        except Exception as e:
-            logger.error("Error occurred during sync_apps_to_ralvie: %s", e)
-            return {"status": "error_occurred"}  # Return status in case of exception
-
-
-    def sync_events_to_ralvie(self):
-        try:
-            userId = load_key("userId")
-            if not userId:
-                time.sleep(300)
-                userId = load_key("userId")  # Load userId again after waiting if not already loaded
-
             data = self.get_non_sync_events()
-
+            app_data = self.get_non_sync_application_details()
             if data and data.get("events") and userId:  # Check if data and events are available
                 # print("Total events:", len(data["events"]))
 
@@ -434,6 +391,18 @@ class ServerAPI:
                     if response_data.get("code") == 'RCI0000':
                         event_ids = [obj['event_id'] for obj in data["events"]]
                         if event_ids:
+                            if app_data is not None:
+                                for data in app_data:
+                                    if data and userId:
+                                        payload = {"userId": userId,"name":data['name'],"companyId": companyId, 'url': data['url'] if data['url'] else '','type': 'Browser' if data['url'] else 'Application','alias':data['alias'],'criteria':data['criteria'],"blocked":data['is_blocked'],"ignoreIdleTime":data['is_ignore_idle_time']}
+                                        response = self.sync_appdata_to_ralvie(payload,access_token)  # Send the data directly without wrapping in a "data" key
+                                        if response.status_code == 200:
+                                            response_data = json.loads(response.text)
+                                            if response_data["code"] == 'RCI0000':
+                                                print("applications updated into ralvie successfully")
+                                                return {"status": "success"}
+                                            else:
+                                                return {"status": "failed"}
                             self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
                             self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
                             return {"status": "success"}
@@ -1269,7 +1238,6 @@ class RalvieServerQueue(threading.Thread):
             if is_internet_connected():
                 print("Connected to internet")
                 self.server.sync_events_to_ralvie()
-                self.server.sync_application_to_ralvie()
                 time.sleep(300)
 
 def group_events_by_application(events):
