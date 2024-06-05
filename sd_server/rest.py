@@ -453,19 +453,13 @@ class RalvieLoginResource(Resource):
             token = json.loads(auth_result.text)["data"]["access_token"]
             store_access_token(cache_key,token)
             # Get the User Key
-            access_token=get_access_token(cache_key)
-            SD_KEYS = {
-                "userId": access_token
-            }
-            print("Access token ravie",access_token)
-            store_credentials(cache_key, SD_KEYS)
             user_key = cached_credentials.get("encrypted_db_key") if cached_credentials else None
 
             # This function is used to get user credentials from the user_key
             if user_key is None:
                 token = json.loads(auth_result.text)["data"]["access_token"]
                 refresh_token = json.loads(auth_result.text)["data"]["refresh_token"]
-                store_credentials(cache_key, SD_KEYS)
+                # store_credentials(cache_key, SD_KEYS)
                 user_id = json.loads(auth_result.text)["data"]["id"]
                 current_app.api.get_user_credentials(user_id, 'Bearer ' + token)
                 init_db = current_app.api.init_db()
