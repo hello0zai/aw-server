@@ -372,6 +372,7 @@ class ServerAPI:
             userId = load_key("userId")
             cache_key = "Sundial"
             cached_credentials = get_credentials(cache_key)
+
             access_token = cached_credentials['token']
             companyId=cached_credentials['companyId']
             if not userId:
@@ -399,7 +400,6 @@ class ServerAPI:
                                         if response.status_code == 200:
                                             response_data = json.loads(response.text)
                                             if response_data["code"] == 'RCI0000':
-                                                print("applications updated into ralvie successfully")
                                                 return {"status": "success"}
                                             else:
                                                 return {"status": "failed"}
@@ -1039,31 +1039,19 @@ class ServerAPI:
             apps_json_list = []
 
             for app in app_details:
-                idd = app.id
-                typee = app.type
-                name = app.name
-                url = app.url
-                alias = app.alias
-                is_blocked = app.is_blocked
-                is_ignore_idle_time = app.is_ignore_idle_time
-                color = app.color
-                criteria = app.criteria
-                created_at = app.created_at
-                updated_at = app.updated_at
-
                 # Convert each application detail to JSON object using custom serializer
                 app_json = json.dumps({
-                    "id": idd,
-                    "type": typee,
-                    "name": name,
-                    "url": url,
-                    "alias": alias,
-                    "is_blocked": is_blocked,
-                    "is_ignore_idle_time": is_ignore_idle_time,
-                    "color": color,
-                    "criteria": criteria,
-                    "created_at": created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    "updated_at": updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                    "id": app.id,
+                    "type": app.type,
+                    "name": app.name,
+                    "url": app.url,
+                    "alias": app.alias,
+                    "is_blocked": app.is_blocked,
+                    "is_ignore_idle_time": app.is_ignore_idle_time,
+                    "color": app.color,
+                    "criteria": app.criteria,
+                    "created_at": app.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    "updated_at": app.updated_at.strftime('%Y-%m-%d %H:%M:%S')
                 }, default=datetime_serializer)
 
                 apps_json_list.append(json.loads(app_json))
