@@ -98,7 +98,9 @@ class ServerAPI:
         self.testing = testing
         self.last_event = {}  # type: dict
         self.server_address = "{protocol}://{host}".format(
-            protocol='https', host='ralvie.minervaiotdev.com'
+            # protocol='https', host='ralvie.minervaiotdev.com'
+            protocol='http', host='10.10.10.142:9010'
+
         )
         self.ralvie_server_queue = RalvieServerQueue(self)
 
@@ -356,18 +358,29 @@ class ServerAPI:
         """
         endpoint = f"/web/company"
         return self._post(endpoint , user, {"Authorization" : token})
-
+    
+    def sync_appdata_to_ralvie(self, data: Dict[str, Any],token) -> Any:
+        """
+        Sync application data to Ralvie.
+        """
+        endpoint = "/web/open/application"
+        return self._post(endpoint, data,{"Authorization" : token})
+        # return self._post(endpoint, data,{"Authorization" : token})
+    
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
+            cache_key = "Sundial"
+            cached_credentials = get_credentials(cache_key)
+            access_token = cached_credentials['token']
+            companyId=cached_credentials['companyId']
             if not userId:
                 time.sleep(300)
                 userId = load_key("userId")  # Load userId again after waiting if not already loaded
-
             data = self.get_non_sync_events()
-
+            app_data = self.get_non_sync_application_details()
             if data and data.get("events") and userId:  # Check if data and events are available
-                print("Total events:", len(data["events"]))
+                # print("Total events:", len(data["events"]))
 
                 payload = {"userId": userId, "events": data["events"]}
                 endpoint = "/web/event"
@@ -378,6 +391,18 @@ class ServerAPI:
                     if response_data.get("code") == 'RCI0000':
                         event_ids = [obj['event_id'] for obj in data["events"]]
                         if event_ids:
+                            if app_data is not None:
+                                for data in app_data:
+                                    if data and userId:
+                                        payload = {"userId": userId,"name":data['name'],"companyId": companyId, 'url': data['url'] if data['url'] else '','type': 'Browser' if data['url'] else 'Application','alias':data['alias'],'criteria':data['criteria'],"blocked":data['is_blocked'],"ignoreIdleTime":data['is_ignore_idle_time']}
+                                        response = self.sync_appdata_to_ralvie(payload,access_token)  # Send the data directly without wrapping in a "data" key
+                                        if response.status_code == 200:
+                                            response_data = json.loads(response.text)
+                                            if response_data["code"] == 'RCI0000':
+                                                print("applications updated into ralvie successfully")
+                                                return {"status": "success"}
+                                            else:
+                                                return {"status": "failed"}
                             self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
                             self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
                             return {"status": "success"}
@@ -416,6 +441,7 @@ class ServerAPI:
             user_key = credentials_data["userKey"]
             email = user_data.get("email", None)
             phone = user_data.get("phone", None)
+            companyId=user_data.get("companyId",None)
             firstName = user_data.get("firstName", None)
             lastName = user_data.get("lastName", None)
             key = user_key
@@ -432,6 +458,8 @@ class ServerAPI:
                 "firstname": firstName,
                 "lastname": lastName,
                 "userId": userId,
+                "token" : token,
+                "companyId":companyId,
             }
 
             store_credentials(cache_key, SD_KEYS)
@@ -1000,6 +1028,51 @@ class ServerAPI:
 
             return json.loads(events_json)
         else: return None
+
+    def get_non_sync_application_details(self):
+        """
+        Fetch non-sync application details and convert to JSON.
+        """
+        app_details = self.db.get_non_sync_application_details()
+
+        if len(app_details) > 0:
+            apps_json_list = []
+
+            for app in app_details:
+                idd = app.id
+                typee = app.type
+                name = app.name
+                url = app.url
+                alias = app.alias
+                is_blocked = app.is_blocked
+                is_ignore_idle_time = app.is_ignore_idle_time
+                color = app.color
+                criteria = app.criteria
+                created_at = app.created_at
+                updated_at = app.updated_at
+
+                # Convert each application detail to JSON object using custom serializer
+                app_json = json.dumps({
+                    "id": idd,
+                    "type": typee,
+                    "name": name,
+                    "url": url,
+                    "alias": alias,
+                    "is_blocked": is_blocked,
+                    "is_ignore_idle_time": is_ignore_idle_time,
+                    "color": color,
+                    "criteria": criteria,
+                    "created_at": created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    "updated_at": updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                }, default=datetime_serializer)
+
+                apps_json_list.append(json.loads(app_json))
+
+            return apps_json_list
+        else:
+            return None
+
+
 
     def get_most_used_apps(
         self,
