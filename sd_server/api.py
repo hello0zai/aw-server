@@ -379,11 +379,10 @@ class ServerAPI:
                 time.sleep(300)
                 userId = load_key("userId")  # Load userId again after waiting if not already loaded
             data = self.get_non_sync_events()
-            app_data = self.get_non_sync_application_details()
             if data and data.get("events") and userId:  # Check if data and events are available
                 # print("Total events:", len(data["events"]))
 
-                payload = {"userId": userId, "events": data["events"]}
+                payload = {"userId": userId, "companyId":companyId, "events": data["events"]}
                 endpoint = "/web/event"
                 response = self._post(endpoint, payload)
 
@@ -392,12 +391,6 @@ class ServerAPI:
                     if response_data.get("code") == 'RCI0000':
                         event_ids = [obj['event_id'] for obj in data["events"]]
                         if event_ids:
-                            if app_data is not None:
-                                for data in app_data:
-                                    if data and userId:
-                                        payload = {"userId": userId,"name":data['name'],"companyId": companyId, 'url': data['url'] if data['url'] else '','type': 'Browser' if data['url'] else 'Application','alias':data['alias'],'criteria':data['criteria'],"blocked":data['is_blocked'],"ignoreIdleTime":data['is_ignore_idle_time']}
-                                        self.sync_appdata_to_ralvie(payload,access_token)  # Send the data directly without wrapping in a "data" key
-
                             self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
                             self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
                             return {"status": "success"}
@@ -1023,38 +1016,6 @@ class ServerAPI:
 
             return json.loads(events_json)
         else: return None
-
-    def get_non_sync_application_details(self):
-        """
-        Fetch non-sync application details and convert to JSON.
-        """
-        app_details = self.db.get_non_sync_application_details()
-
-        if len(app_details) > 0:
-            apps_json_list = []
-
-            for app in app_details:
-                # Convert each application detail to JSON object using custom serializer
-                app_json = json.dumps({
-                    "id": app.id,
-                    "type": app.type,
-                    "name": app.name,
-                    "url": app.url,
-                    "alias": app.alias,
-                    "is_blocked": app.is_blocked,
-                    "is_ignore_idle_time": app.is_ignore_idle_time,
-                    "color": app.color,
-                    "criteria": app.criteria,
-                    "created_at": app.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    "updated_at": app.updated_at.strftime('%Y-%m-%d %H:%M:%S')
-                }, default=datetime_serializer)
-
-                apps_json_list.append(json.loads(app_json))
-
-            return apps_json_list
-        else:
-            return None
-
 
 
     def get_most_used_apps(

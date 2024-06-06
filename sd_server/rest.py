@@ -451,7 +451,6 @@ class RalvieLoginResource(Resource):
             # Retrieve Cached User Credentials
             cached_credentials = cache_user_credentials(cache_key, "SD_KEYS")
             token = json.loads(auth_result.text)["data"]["access_token"]
-            store_access_token(cache_key,token)
             # Get the User Key
             user_key = cached_credentials.get("encrypted_db_key") if cached_credentials else None
 
