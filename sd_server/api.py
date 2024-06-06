@@ -99,7 +99,7 @@ class ServerAPI:
         self.last_event = {}  # type: dict
         self.server_address = "{protocol}://{host}".format(
             # protocol='https', host='ralvie.minervaiotdev.com'
-            protocol='http', host='10.10.10.142:9010'
+            protocol='http', host='14.97.160.178:9010'
 
         )
         self.ralvie_server_queue = RalvieServerQueue(self)
@@ -358,7 +358,7 @@ class ServerAPI:
         """
         endpoint = f"/web/company"
         return self._post(endpoint , user, {"Authorization" : token})
-    
+
     def sync_appdata_to_ralvie(self, data: Dict[str, Any],token) -> Any:
         """
         Sync application data to Ralvie.
@@ -366,7 +366,7 @@ class ServerAPI:
         endpoint = "/web/open/application"
         return self._post(endpoint, data,{"Authorization" : token})
         # return self._post(endpoint, data,{"Authorization" : token})
-    
+
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
@@ -396,13 +396,8 @@ class ServerAPI:
                                 for data in app_data:
                                     if data and userId:
                                         payload = {"userId": userId,"name":data['name'],"companyId": companyId, 'url': data['url'] if data['url'] else '','type': 'Browser' if data['url'] else 'Application','alias':data['alias'],'criteria':data['criteria'],"blocked":data['is_blocked'],"ignoreIdleTime":data['is_ignore_idle_time']}
-                                        response = self.sync_appdata_to_ralvie(payload,access_token)  # Send the data directly without wrapping in a "data" key
-                                        if response.status_code == 200:
-                                            response_data = json.loads(response.text)
-                                            if response_data["code"] == 'RCI0000':
-                                                return {"status": "success"}
-                                            else:
-                                                return {"status": "failed"}
+                                        self.sync_appdata_to_ralvie(payload,access_token)  # Send the data directly without wrapping in a "data" key
+
                             self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
                             self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
                             return {"status": "success"}
