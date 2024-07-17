@@ -97,8 +97,8 @@ class ServerAPI:
         self.db = db
         self.testing = testing
         self.last_event = {}  # type: dict
-        self.server_address = "{protocol}://{host}".format(
-            protocol='https', host='ralvie.minervaiotdev.com'
+        self.server_address = "{protocol}://{host}:{port}".format(
+            protocol='http', host='14.97.160.178', port=9010
             # protocol='http', host='localhost:9010'
 
         )
@@ -372,8 +372,6 @@ class ServerAPI:
             userId = load_key("userId")
             cache_key = "Sundial"
             cached_credentials = get_credentials(cache_key)
-
-            access_token = cached_credentials['token']
             companyId=cached_credentials['companyId']
             if not userId:
                 time.sleep(300)

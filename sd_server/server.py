@@ -199,7 +199,7 @@ def _start(
         cors_origins=cors_origins,
         custom_static=custom_static,
     )
-    webbrowser.open("http://"+ host+ ":" + str(port))
+
     try:
         app.run(
             debug=testing,

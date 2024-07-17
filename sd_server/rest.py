@@ -70,59 +70,24 @@ def get_potential_location_and_zone(minutes_difference):
 
 def host_header_check(f):
     """
-        Check if token is valid. This is a decorator for API methods that need to be decorated in order to check the token in the Host header
+    Protects against DNS rebinding attacks (see https://github.com/ActivityWatch/activitywatch/security/advisories/GHSA-v9fg-6g9j-h4x4)
 
-        @param f - function to be decorated with this
-
-        @return tuple of ( token error
+    Some discussion in Syncthing how they do it: https://github.com/syncthing/syncthing/issues/4819
     """
 
     @wraps(f)
     def decorator(*args, **kwargs):
-        """
-         Decorate to check token. This is a decorator that can be used as a context manager or in a class decorator.
-
-
-         @return tuple of JSON response and status code. If status code is 0 it means success
-        """
-        excluded_paths = [
-            '/api/0/buckets/',
-            '/api/swagger.json', '/api/0/ralvie/login','/api/0/ralvie/refresh_token',
-            '/api/0/login', '/api/0/user'
-        ]
-        # This method is used to check if the request is valid and if the request is a heartbeat credentials and the request is not a valid credentials.
-        if "/heartbeat" not in request.path and "/credentials" not in request.path and request.path not in excluded_paths and request.method != 'OPTIONS':
-            token = request.headers.get("Authorization")
-            # This method is used to validate the token.
-            if not token:
-                logging.warning("Token is missing")
-                return {"message": "Token is missing"}, 401
-            elif "/company" not in request.path:
-                cache_key = "Sundial"
-                cached_credentials = cache_user_credentials(cache_key, "SD_KEYS")
-                if cached_credentials is not None:
-                    user_key = cached_credentials.get("user_key")
-                    try:
-                        jwt.decode(token.replace("Bearer ", ""), key=user_key, algorithms=["HS256"])
-                    except jwt.InvalidTokenError as e:
-                        logging.error("Invalid token")
-                        return {"message": "Invalid token"}, 401
-                else:
-                    user_key=None
-                    logger.info("cache credentials are None at the time.system checking....please login")
-
         server_host = current_app.config["HOST"]
         req_host = request.headers.get("host", None)
-        # Check if server is listening on 0. 0. 0. 0. 0. 0 host header check is disabled.
         if server_host == "0.0.0.0":
-            logging.warning(
+            logger.warning(
                 "Server is listening on 0.0.0.0, host header check is disabled (potential security issue)."
             )
         elif req_host is None:
             return {"message": "host header is missing"}, 400
-        elif req_host.split(":")[0] not in ["localhost", "127.0.0.1", server_host]:
-            return {"message": f"host header is invalid (was {req_host})"}, 400
-
+        else:
+            if req_host.split(":")[0] not in ["localhost", "127.0.0.1", server_host]:
+                return {"message": f"host header is invalid (was {req_host})"}, 400
         return f(*args, **kwargs)
 
     return decorator
@@ -1669,5 +1634,12 @@ class DeleteUserProfilePhoto(Resource):
         return current_app.api.delete_user_profile_photo(token)
 
 
-
+@api.route("/0/init_db")
+class initdb(Resource):
+    def get(self):
+        init_db = current_app.api.init_db()
+        if not init_db:
+            print("Error")
+        else:
+            print("Success")
 
