@@ -398,6 +398,7 @@ class RalvieLoginResource(Resource):
         data = request.get_json()
         user_name = data.get('userName')
         password = data.get('password')
+        companyId=data.get('companyID',None)
 
         # JSON response with user_name password user_name user_name password
         if not user_name:
@@ -437,7 +438,7 @@ class RalvieLoginResource(Resource):
             payload = {
                 "user": getpass.getuser(),
                 "email": cache_user_credentials(cache_key, "SD_KEYS").get("email"),
-                "phone": cache_user_credentials(cache_key, "SD_KEYS").get("phone")
+                "phone": cache_user_credentials(cache_key, "SD_KEYS").get("phone"),
             }
             encoded_jwt = jwt.encode(payload, cache_user_credentials(cache_key, "SD_KEYS").get("user_key"),
                                      algorithm="HS256")
@@ -445,8 +446,9 @@ class RalvieLoginResource(Resource):
             # Response
             response_data['code'] = "UASI0011",
             response_data["message"] = json.loads(auth_result.text)["message"],
+            response_data['companyId'] =companyId,
             response_data["data"]: {"token": "Bearer " + encoded_jwt}
-            return {"code": "UASI0011", "message": json.loads(auth_result.text)["message"],
+            return {"code": "UASI0011", "message": json.loads(auth_result.text)["message"],"companyId":companyId,
                     "data": {"token": "Bearer " + encoded_jwt, "access_token": "Bearer " + token, "refresh_token": refresh_token}}, 200
         else:
             return {"code": json.loads(auth_result.text)["code"], "message": json.loads(auth_result.text)["message"],
