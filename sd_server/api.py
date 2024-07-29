@@ -429,7 +429,7 @@ class ServerAPI:
             phone = user_data.get("phone", None)
             companyId=user_data.get("companyId",None)
             firstName = user_data.get("firstName", None)
-            lastName = user_data.get("lastName", None)
+            companyName = user_data.get("companyName",None)
             key = user_key
             encrypted_db_key = encrypt_uuid(db_key, key)
             encrypted_data_encryption_key = encrypt_uuid(data_encryption_key, key)
@@ -442,10 +442,10 @@ class ServerAPI:
                 "email": email,
                 "phone": phone,
                 "firstname": firstName,
-                "lastname": lastName,
                 "userId": userId,
                 "token" : token,
                 "companyId":companyId,
+                "companyName":companyName
             }
 
             store_credentials(cache_key, SD_KEYS)
