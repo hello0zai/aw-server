@@ -399,6 +399,9 @@ class RalvieLoginResource(Resource):
         user_name = data.get('userName')
         password = data.get('password')
         companyId=data.get('companyID',None)
+        companyName = data.get('companyName',None)
+
+        print(companyName)
 
         # JSON response with user_name password user_name user_name password
         if not user_name:
@@ -426,7 +429,7 @@ class RalvieLoginResource(Resource):
                 refresh_token = json.loads(auth_result.text)["data"]["refresh_token"]
                 # store_credentials(cache_key, SD_KEYS)
                 user_id = json.loads(auth_result.text)["data"]["id"]
-                current_app.api.get_user_credentials(user_id, 'Bearer ' + token)
+                current_app.api.get_user_credentials(user_id, 'Bearer ' + token, companyName)
                 init_db = current_app.api.init_db()
 
                 # Reset the user to the default user

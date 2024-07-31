@@ -405,7 +405,7 @@ class ServerAPI:
             logger.error("Error occurred during sync_events_to_ralvie: %s", e)
             return {"status": "error_occurred"}  # Return status in case of exception
 
-    def get_user_credentials(self, userId, token):
+    def get_user_credentials(self, userId, token,companyName=None):
         """
         Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user '
 
@@ -416,7 +416,7 @@ class ServerAPI:
         cache_key = "Sundial"
         endpoint = f"/web/user/{userId}/credentials"
         user_credentials = self._get(endpoint, {"Authorization": token})
-
+        print("------>",companyName)
         # This function is used to retrieve the user credentials.
         if user_credentials.status_code == 200 and json.loads(user_credentials.text)["code"] == 'RCI0000':
             credentials_data = json.loads(user_credentials.text)["data"]["credentials"]
@@ -429,7 +429,6 @@ class ServerAPI:
             phone = user_data.get("phone", None)
             companyId=user_data.get("companyId",None)
             firstName = user_data.get("firstName", None)
-            companyName = user_data.get("companyName",None)
             key = user_key
             encrypted_db_key = encrypt_uuid(db_key, key)
             encrypted_data_encryption_key = encrypt_uuid(data_encryption_key, key)
@@ -445,7 +444,7 @@ class ServerAPI:
                 "userId": userId,
                 "token" : token,
                 "companyId":companyId,
-                "companyName":companyName
+                "companyName": companyName
             }
 
             store_credentials(cache_key, SD_KEYS)
