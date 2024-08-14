@@ -757,31 +757,34 @@ class HeartbeatResource(Resource):
 
         if settings_code.get("starttime") and settings_code.get("endtime"):
             try:
+                # Assuming the times are in 24-hour format
                 start_time_str = settings_code.get("starttime")
                 end_time_str = settings_code.get("endtime")
 
-                s_time_obj = datetime.strptime(start_time_str, "%I:%M %p")
-                e_time_obj = datetime.strptime(end_time_str, "%I:%M %p")
+                # Adjust the format string to match the time format
+                time_format = "%H:%M"  # 24-hour format
 
-                local_start_time = s_time_obj.strftime("%H:%M")
-                local_end_time = e_time_obj.strftime("%H:%M")
-
-                # local_start_time_str = "17:57"
                 # Get the current date
                 current_date = datetime.now().date()
                 day_name = current_date.strftime("%A")
-                # Parse the time string and create a datetime object with the current date
-                local_start_time = datetime.strptime(f"{current_date} {local_start_time}", "%Y-%m-%d %H:%M")
-                local_end_time = datetime.strptime(f"{current_date} {local_end_time}", "%Y-%m-%d %H:%M")
+
+                # Combine date with start and end times directly
+                local_start_time = datetime.strptime(f"{current_date} {start_time_str}", f"%Y-%m-%d {time_format}")
+                local_end_time = datetime.strptime(f"{current_date} {end_time_str}", f"%Y-%m-%d {time_format}")
 
                 # Now local_start_time is a datetime object, you can use astimezone method
                 start_utc_time = local_start_time.astimezone(pytz.utc)
                 end_utc_time = local_end_time.astimezone(pytz.utc)
+
+
             except json.JSONDecodeError:
                 logger.info("Error: Failed to decode JSON string")
+            except ValueError as e:
+                logger.error(f"Error: {e}")
 
         # Check if schedule is true and contains weekdays
         current_time_utc = datetime.now(pytz.utc)
+
         if schedule and (day_name.lower() in true_week_values) and not (start_utc_time <= current_time_utc <= end_utc_time):
             return {"message": "Skipping data capture."}, 200
             # Capture data
