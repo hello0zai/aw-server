@@ -93,12 +93,12 @@ class ServerAPI:
          @return A boolean indicating success or failure of the initialization. If True the instance will be initialized
         """
         cache_key = "Sundial"
-        cache_user_credentials(cache_key,"SD_KEYS")
+        cache_user_credentials("SD_KEYS")
         self.db = db
         self.testing = testing
         self.last_event = {}  # type: dict
-        self.server_address = "{protocol}://{host}:{port}".format(
-            protocol='http', host='14.97.160.178', port=9010
+        self.server_address = "{protocol}://{host}".format(
+            protocol='https', host='ralvie.minervaiotdev.com'
             # protocol='http', host='localhost:9010'
 
         )
@@ -407,33 +407,39 @@ class ServerAPI:
 
     def get_user_credentials(self, userId, token):
         """
-        Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user '
+        Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user's credentials.
 
-        @param userId
-        @param token
+        @param userId: User ID
+        @param token: Authorization token
         """
 
         cache_key = "Sundial"
         endpoint = f"/web/user/{userId}/credentials"
         user_credentials = self._get(endpoint, {"Authorization": token})
-        # This function is used to retrieve the user credentials.
+
         if user_credentials.status_code == 200 and json.loads(user_credentials.text)["code"] == 'RCI0000':
             credentials_data = json.loads(user_credentials.text)["data"]["credentials"]
             user_data = json.loads(user_credentials.text)["data"]["user"]
 
+            # Clear the cache and keychain only for the relevant service key (SD_KEYS)
+            clear_credentials("SD_KEYS")
+            delete_password("SD_KEYS")
+
+            # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
             data_encryption_key = credentials_data["dataEncryptionKey"]
             user_key = credentials_data["userKey"]
             email = user_data.get("email", None)
             phone = user_data.get("phone", None)
-            companyId=user_data.get("companyId",None)
-            companyName=user_data.get("companyName",None)
+            companyId = user_data.get("companyId", None)
+            companyName = user_data.get("companyName", None)
             firstName = user_data.get("firstName", None)
             key = user_key
             encrypted_db_key = encrypt_uuid(db_key, key)
             encrypted_data_encryption_key = encrypt_uuid(data_encryption_key, key)
             encrypted_user_key = encrypt_uuid(user_key, key)
 
+            # Create the SD_KEYS dictionary
             SD_KEYS = {
                 "user_key": user_key,
                 "encrypted_db_key": encrypted_db_key,
@@ -442,27 +448,24 @@ class ServerAPI:
                 "phone": phone,
                 "firstname": firstName,
                 "userId": userId,
-                "token" : token,
-                "companyId":companyId,
+                "token": token,
+                "companyId": companyId,
                 "companyName": companyName,
                 "Authenticated": True,
             }
 
-            store_credentials(cache_key, SD_KEYS)
+            # Update the cache first
+            store_credentials("SD_KEYS", SD_KEYS)
+
+            # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            add_password("SD_KEYS", serialized_data)
-
-            cached_credentials = get_credentials(cache_key)
-            key_decoded = cached_credentials.get("user_key")
-
-            decrypted_db_key = decrypt_uuid(encrypted_db_key, key_decoded)
-            decrypted_user_key = decrypt_uuid(encrypted_user_key, key_decoded)
-            decrypted_data_encryption_key = decrypt_uuid(encrypted_data_encryption_key, key_decoded)
-            self.last_event = {}
-
-            print(f"user_key: {decrypted_user_key}")
-            print(f"db_key: {decrypted_db_key}")
-            print(f"watcher_key: {decrypted_data_encryption_key}")
+            status = add_password("SD_KEYS", serialized_data)
+            print(status)
+            # Retrieve the cached credentials to confirm they were updated
+            cached_credentials = get_credentials("SD_KEYS")
+            if cached_credentials:
+                key_decoded = cached_credentials.get("user_key")
+                self.last_event = {}
 
         return user_credentials
 
@@ -1150,7 +1153,7 @@ class RalvieServerQueue(threading.Thread):
         try:  # Try to connect
             db_key = ""
             cache_key = "Sundial"
-            cached_credentials = cache_user_credentials(cache_key,"SD_KEYS")
+            cached_credentials = cache_user_credentials("SD_KEYS")
             if cached_credentials != None:
                 db_key = cached_credentials.get("encrypted_db_key")
             else:
