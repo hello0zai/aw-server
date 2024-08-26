@@ -370,7 +370,7 @@ class ServerAPI:
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
-            cache_key = "Sundial"
+            cache_key = "SD_KEYS"
             cached_credentials = get_credentials(cache_key)
             companyId=cached_credentials['companyId']
             if not userId:
@@ -438,7 +438,6 @@ class ServerAPI:
             encrypted_db_key = encrypt_uuid(db_key, key)
             encrypted_data_encryption_key = encrypt_uuid(data_encryption_key, key)
             encrypted_user_key = encrypt_uuid(user_key, key)
-
             # Create the SD_KEYS dictionary
             SD_KEYS = {
                 "user_key": user_key,
