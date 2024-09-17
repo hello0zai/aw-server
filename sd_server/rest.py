@@ -1218,7 +1218,8 @@ class idletime(Resource):
          @return a JSON object with a list of modules in the
         """
         module = manager.module_status("sd-watcher-afk")
-        if module["is_alive"]:
+        status = request.args.get("status")
+        if module["is_alive"] and not status:
             manager.stop("sd-watcher-afk")
             message = "idle time has stoppped"
             state = False
