@@ -32,6 +32,7 @@ from sd_qt.manager import Manager
 application_cache_key = "application_cache"
 manager = Manager()
 
+
 def get_potential_location_and_zone(minutes_difference):
     """
     Attempts to guess potential time zone based on assumed reference time
@@ -57,7 +58,7 @@ def get_potential_location_and_zone(minutes_difference):
 
     # Consider all zones with the potential offset
     potential_zones = [zone for zone in pytz.all_timezones
-                        if zone.localize(datetime.now()).utcoffset() == potential_offset]
+                       if zone.localize(datetime.now()).utcoffset() == potential_offset]
 
     return potential_zones
 
@@ -95,7 +96,8 @@ authorizations = {
     }
 }
 blueprint = Blueprint("api", __name__, url_prefix="/api")
-api = Api(blueprint, doc="/", decorators=[host_header_check], authorizations=authorizations)
+api = Api(blueprint, doc="/",
+          decorators=[host_header_check], authorizations=authorizations)
 
 # Loads event and bucket schema from JSONSchema in sd_core
 event = api.schema_model("Event", schema.get_json_schema("event"))
@@ -268,11 +270,13 @@ class UserResource(Resource):
                         "status": "ACTIVE"
                     }
 
-                    companyResult = current_app.api.create_company(companyPayload, 'Bearer ' + token)
+                    companyResult = current_app.api.create_company(
+                        companyPayload, 'Bearer ' + token)
 
                     # This method is called when the user is created
                     if companyResult.status_code == 200 and json.loads(companyResult.text)["code"] == 'UASI0006':
-                        current_app.api.get_user_credentials(id, 'Bearer ' + token)
+                        current_app.api.get_user_credentials(
+                            id, 'Bearer ' + token)
                         init_db = current_app.api.init_db()
                         # This function is called when the user is created
                         if init_db:
@@ -393,9 +397,9 @@ class RalvieLoginResource(Resource):
         data = request.get_json()
         user_name = data.get('userName')
         password = data.get('password')
-        companyId=data.get('companyID',None)
-        print(user_name,password,companyId)
-        user_id= None
+        companyId = data.get('companyID', None)
+        print(user_name, password, companyId)
+        user_id = None
 
         # JSON response with user_name password user_name user_name password
         if not user_name:
@@ -415,10 +419,12 @@ class RalvieLoginResource(Resource):
             cached_credentials = cache_user_credentials("SD_KEYS")
             token = json.loads(auth_result.text)["data"]["access_token"]
             # Get the User Key
-            user_key = cached_credentials.get("encrypted_db_key") if cached_credentials else None
+            user_key = cached_credentials.get(
+                "encrypted_db_key") if cached_credentials else None
 
             token = json.loads(auth_result.text)["data"]["access_token"]
-            refresh_token = json.loads(auth_result.text)["data"]["refresh_token"]
+            refresh_token = json.loads(auth_result.text)[
+                "data"]["refresh_token"]
             # store_credentials(cache_key, SD_KEYS)
             user_id = json.loads(auth_result.text)["data"]["id"]
             current_app.api.get_user_credentials(user_id, 'Bearer ' + token)
@@ -441,13 +447,13 @@ class RalvieLoginResource(Resource):
             # Response
             response_data['code'] = "UASI0011",
             response_data["message"] = json.loads(auth_result.text)["message"],
-            response_data['companyId'] =companyId,
+            response_data['companyId'] = companyId,
             response_data["data"]: {"token": "Bearer " + encoded_jwt}
-            return {"code": "UASI0011", "message": json.loads(auth_result.text)["message"],"companyId":companyId,
-                    "data": {"token": "Bearer " + encoded_jwt, "access_token": "Bearer " + token, "refresh_token": refresh_token},"userId":user_id}, 200
+            return {"code": "UASI0011", "message": json.loads(auth_result.text)["message"], "companyId": companyId,
+                    "data": {"token": "Bearer " + encoded_jwt, "access_token": "Bearer " + token, "refresh_token": refresh_token}, "userId": user_id}, 200
         else:
             return {"code": json.loads(auth_result.text)["code"], "message": json.loads(auth_result.text)["message"],
-                    "data": json.loads(auth_result.text)["data"],"userId":user_id}, 200
+                    "data": json.loads(auth_result.text)["data"], "userId": user_id}, 200
 
 
 # BUCKETS
@@ -674,7 +680,8 @@ class EventCountResource(Resource):
         start = iso8601.parse_date(args["start"]) if "start" in args else None
         end = iso8601.parse_date(args["end"]) if "end" in args else None
 
-        events = current_app.api.get_eventcount(bucket_id, start=start, end=end)
+        events = current_app.api.get_eventcount(
+            bucket_id, start=start, end=end)
         return events, 200
 
 
@@ -741,8 +748,8 @@ class HeartbeatResource(Resource):
         @return 200 OK if heartbeats were sent 400 Bad Request if there is no credentials in
         """
         heartbeat_data = request.get_json()
-        if heartbeat_data['data']['title']=='':
-            heartbeat_data['data']['title']=heartbeat_data['data']['app']
+        if heartbeat_data['data']['title'] == '':
+            heartbeat_data['data']['title'] = heartbeat_data['data']['app']
 
         if heartbeat_data['data']['app'] in ['ApplicationFrameHost.exe']:
             heartbeat_data['data']['app'] = heartbeat_data['data']['title'] + '.exe'
@@ -750,11 +757,13 @@ class HeartbeatResource(Resource):
         # Set default title using the value of 'app' attribute if it's not present in the data dictionary
         settings = db_cache.retrieve("settings_cache")
         if not settings:
-            db_cache.store("settings_cache",current_app.api.retrieve_all_settings())
-        settings_code = settings.get("weekdays_schedule",{})
-        schedule = settings.get("schedule",{})
+            db_cache.store("settings_cache",
+                           current_app.api.retrieve_all_settings())
+        settings_code = settings.get("weekdays_schedule", {})
+        schedule = settings.get("schedule", {})
 
-        true_week_values = [key.lower() for key, value in settings_code.items() if value is True]
+        true_week_values = [key.lower()
+                            for key, value in settings_code.items() if value is True]
 
         if settings_code.get("starttime") and settings_code.get("endtime"):
             try:
@@ -770,13 +779,14 @@ class HeartbeatResource(Resource):
                 day_name = current_date.strftime("%A")
 
                 # Combine date with start and end times directly
-                local_start_time = datetime.strptime(f"{current_date} {start_time_str}", f"%Y-%m-%d {time_format}")
-                local_end_time = datetime.strptime(f"{current_date} {end_time_str}", f"%Y-%m-%d {time_format}")
+                local_start_time = datetime.strptime(
+                    f"{current_date} {start_time_str}", f"%Y-%m-%d {time_format}")
+                local_end_time = datetime.strptime(
+                    f"{current_date} {end_time_str}", f"%Y-%m-%d {time_format}")
 
                 # Now local_start_time is a datetime object, you can use astimezone method
                 start_utc_time = local_start_time.astimezone(pytz.utc)
                 end_utc_time = local_end_time.astimezone(pytz.utc)
-
 
             except json.JSONDecodeError:
                 logger.info("Error: Failed to decode JSON string")
@@ -790,15 +800,14 @@ class HeartbeatResource(Resource):
             return {"message": "Skipping data capture."}, 200
             # Capture data
         heartbeat = Event(**heartbeat_data)
-
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         # Returns cached credentials if cached credentials are not cached.
         if cached_credentials is None:
             return {"message": "No cached credentials."}, 400
 
         # The pulsetime parameter is required.
-        pulsetime = float(request.args["pulsetime"]) if "pulsetime" in request.args else None
+        pulsetime = float(request.args["pulsetime"]
+                          ) if "pulsetime" in request.args else None
         if pulsetime is None:
             return {"message": "Missing required parameter pulsetime"}, 400
 
@@ -821,8 +830,6 @@ class HeartbeatResource(Resource):
             return "event not occured"
         else:
             return {"message": "Heartbeat failed."}, 500
-
-
 
 
 # QUERY
@@ -862,6 +869,8 @@ def removeprotocals(url):
     else:
         return url
 # EXPORT AND IMPORT
+
+
 def blocked_list():
     # Initialize the blocked_apps dictionary with empty lists for 'app' and 'url'
     blocked_apps = {"app": [], "url": []}
@@ -869,7 +878,8 @@ def blocked_list():
     # Retrieve application blocking information from the cache
     application_blocked = db_cache.retrieve(application_cache_key)
     if not application_blocked:
-        db_cache.store(application_cache_key, current_app.api.application_list())
+        db_cache.store(application_cache_key,
+                       current_app.api.application_list())
 
     if application_blocked:
         # Iterate over each application in the 'app' list
@@ -892,6 +902,8 @@ def blocked_list():
     return blocked_apps
 
 # TODO: Perhaps we don't need this, could be done with a query argument to /0/export instead
+
+
 @api.route("/0/buckets/<string:bucket_id>/export")
 class BucketExportResource(Resource):
     @api.doc(model=buckets_export)
@@ -971,7 +983,8 @@ class SaveSettings(Resource):
                 value_json = value
 
                 # Save settings to the database
-                result = current_app.api.save_settings(code=code, value=value_json)
+                result = current_app.api.save_settings(
+                    code=code, value=value_json)
 
                 # Prepare response dictionary
                 result_dict = {
@@ -1010,6 +1023,7 @@ class retrieveSettings(Resource):
         else:
             return {"message": f"No settings found with code '{code}'"}, 404
 
+
 @api.route("/0/settings/<string:code>")
 class DeleteSettings(Resource):
     @copy_doc(ServerAPI.delete_settings)
@@ -1030,7 +1044,6 @@ class DeleteSettings(Resource):
             return {"message": f"No settings found with code '{code}'"}, 404
 
 
-
 @api.route("/0/getallsettings")
 class GetAllSettings(Resource):
     @copy_doc(ServerAPI.retrieve_all_settings)
@@ -1041,7 +1054,8 @@ class GetAllSettings(Resource):
         """
         settings_dict = db_cache.cache_data("settings_cache")
         if settings_dict is None:
-            db_cache.cache_data("settings_cache",current_app.api.retrieve_all_settings())
+            db_cache.cache_data(
+                "settings_cache", current_app.api.retrieve_all_settings())
             settings_dict = db_cache.cache_data("settings_cache")
 
         return settings_dict
@@ -1057,9 +1071,10 @@ class GetSchedule(Resource):
         """
         settings_dict = db_cache.cache_data("settings_cache")
         if settings_dict is None:
-            db_cache.cache_data("settings_cache",current_app.api.retrieve_all_settings())
+            db_cache.cache_data(
+                "settings_cache", current_app.api.retrieve_all_settings())
             settings_dict = db_cache.cache_data("settings_cache")
-        return json.loads(settings_dict["weekdays_schedule"]),200
+        return json.loads(settings_dict["weekdays_schedule"]), 200
 
 
 @api.route("/0/applicationsdetails")
@@ -1097,11 +1112,13 @@ class SaveApplicationDetails(Resource):
             }
 
             # Remove None values to avoid overwriting with None in the database
-            application_details = {k: v for k, v in application_details.items() if v is not None}
+            application_details = {
+                k: v for k, v in application_details.items() if v is not None}
 
             # Save application details to the database
             # Assuming current_app.api.save_application_details() is your method to save application details
-            result = current_app.api.save_application_details(application_details)
+            result = current_app.api.save_application_details(
+                application_details)
             if result is not None:
                 return {"message": "Application details saved successfully",
                         "result": result.json()}, 200  # Use .json() method to serialize the result
@@ -1208,27 +1225,54 @@ class Status(Resource):
 
 
 @api.route('/0/idletime')
-class idletime(Resource):
+class Idletime(Resource):
     @api.doc(security="Bearer")
     def get(self):
         """
-         Get list of modules. This is a GET request to / modules. The response is a JSON object with a list of modules.
+        Manage the idle time state by starting or stopping the 'sd-watcher-afk' module.
 
+        The 'status' query parameter controls whether the module is started or stopped:
+        - If 'status' is 'start', the module is started.
+        - If 'status' is 'stop', the module is stopped.
 
-         @return a JSON object with a list of modules in the
+        @return a JSON object with a message indicating the new state.
         """
-        module = manager.module_status("sd-watcher-afk")
-        status = request.args.get("status")
-        if module["is_alive"] and not status:
-            manager.stop("sd-watcher-afk")
-            message = "idle time has stoppped"
+
+        try:
+            module = manager.module_status("sd-watcher-afk")
+            status = request.args.get("status")
+
+            if module is None or "is_alive" not in module:
+                return {"message": "Module status could not be retrieved"}, 500
             state = False
-        else:
-            manager.start("sd-watcher-afk")
-            message = "idle time has started"
-            state = True
-        current_app.api.save_settings("idle_time",state)
-        return {"message": message}, 200
+            # Check the status argument and start/stop the module accordingly
+            if status == "start":
+                if not module["is_alive"]:
+                    manager.start("sd-watcher-afk")
+                    message = "Idle time has started"
+                    state = True
+                else:
+                    message = "Idle time is already running"
+                    state = True
+            elif status == "stop":
+                if module["is_alive"]:
+                    manager.stop("sd-watcher-afk")
+                    message = "Idle time has stopped"
+                    state = False
+                else:
+                    message = "Idle time is already stopped"
+                    state = False
+            else:
+                return {"message": "Invalid status parameter. Use 'start' or 'stop'."}, 400
+
+            # Save the new idle time state in the settings
+            current_app.api.save_settings("idle_time", state)
+            return {"message": message}, 200
+
+        except Exception as e:
+            logger.error(f"Error handling idle time: {str(e)}")
+            return {"message": "An error occurred while managing idle time."}, 500
+
 
 
 @api.route('/0/credentials')
@@ -1243,7 +1287,8 @@ class User(Resource):
         """
         cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
-        user_key = cached_credentials.get("encrypted_db_key") if cached_credentials else None
+        user_key = cached_credentials.get(
+            "encrypted_db_key") if cached_credentials else None
         # Returns a JSON response with the user s credentials.
         if user_key is None:
             return False, 404
@@ -1254,7 +1299,6 @@ class User(Resource):
 
 
 @api.route("/0/dashboard/events")
-
 class DashboardResource(Resource):
     def get(self):
         """
@@ -1262,10 +1306,12 @@ class DashboardResource(Resource):
         @return 200 on success, 400 if not found, 500 if other
         """
         args = request.args
-        start = iso8601.parse_date(args.get("start")) if "start" in args else None
+        start = iso8601.parse_date(
+            args.get("start")) if "start" in args else None
         end = iso8601.parse_date(args.get("end")) if "end" in args else None
 
-        blocked_apps = blocked_list()  # Assuming this function returns a list of blocked events
+        # Assuming this function returns a list of blocked events
+        blocked_apps = blocked_list()
         events = current_app.api.get_dashboard_events(start=start, end=end)
         if events:
             for i in range(len(events['events']) - 1, -1, -1):
@@ -1289,7 +1335,7 @@ class MostUsedAppsResource(Resource):
          @return 200 OK if everything worked else 500 Internal Server Error
         """
         args = request.args
-        start_time =  parse(args["start"])
+        start_time = parse(args["start"])
         end_time = parse(args["end"])
         # start = iso8601.parse_date(start_time) if "start" in args else None
         # end = iso8601.parse_date(end_time) if "end" in args else None
@@ -1302,7 +1348,7 @@ class MostUsedAppsResource(Resource):
             for i in range(len(events['most_used_apps']) - 1, -1, -1):
                 app_data = events['most_used_apps'][i]
                 if "url" in app_data.keys() and app_data['url'] in blocked_apps['url']:
-                        del events['most_used_apps'][i]
+                    del events['most_used_apps'][i]
 
         return events, 200
 
@@ -1314,13 +1360,14 @@ class ApplicationListResource(Resource):
         applications = current_app.api.application_list()
         return applications, 200
 
+
 @api.route("/0/sync_server")
 class SyncServer(Resource):
     def get(self):
         try:
             status = current_app.api.sync_events_to_ralvie()
 
-            app_sync_status=current_app.api.sync_application_to_ralvie()
+            app_sync_status = current_app.api.sync_application_to_ralvie()
 
             print(app_sync_status)
 
@@ -1332,7 +1379,8 @@ class SyncServer(Resource):
                 return {"message": "Data has not been synced"}, 500
         except Exception as e:
             # Log the error and return a 500 status code
-            current_app.logger.error("Error occurred during sync_server: %s", e)
+            current_app.logger.error(
+                "Error occurred during sync_server: %s", e)
             return {"message": "Internal server error"}, 500
 
 
@@ -1347,26 +1395,32 @@ class LaunchOnStart(Resource):
 
             if status:
                 launch_app()
-                current_app.api.save_settings("launch", status)
+                state = True
+                current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start enabled."}, 200
             else:
+                state = False
                 delete_launch_app()
-                current_app.api.save_settings("launch", status)
+                current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start disabled."}, 200
         elif sys.platform == "win32":
             if status is None:
                 return {"error": "Status is required in the request body."}, 400
 
             if status:
+                state = True
                 set_autostart_registry(autostart=True)
-                current_app.api.save_settings("launch", status)
+                current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start enabled."}, 200
             else:
+                state = False
                 set_autostart_registry(autostart=False)
-                current_app.api.save_settings("launch", status)
+                current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start disabled."}, 200
 
 # Refresh token
+
+
 @api.route("/0/ralvie/refresh_token")
 class RalvieTokenRefreshResource(Resource):
     def put(self):
@@ -1387,14 +1441,15 @@ class RalvieTokenRefreshResource(Resource):
         # Returns a JSON response with the user credentials.
         if auth_result.status_code == 200 and json.loads(auth_result.text)["code"] == 'UASI0011':
             token = json.loads(auth_result.text)["data"]["access_token"]
-            refresh_token = json.loads(auth_result.text)["data"]["refresh_token"]
-
+            refresh_token = json.loads(auth_result.text)[
+                "data"]["refresh_token"]
 
             return {"code": "UASI0011", "message": json.loads(auth_result.text)["message"],
-                    "data": {"access_token": 'Bearer ' + token,"refresh_token": refresh_token}}, 200
+                    "data": {"access_token": 'Bearer ' + token, "refresh_token": refresh_token}}, 200
         else:
             return {"code": json.loads(auth_result.text)["code"], "message": json.loads(auth_result.text)["message"],
                     "data": json.loads(auth_result.text)["data"]}, 200
+
 
 @api.route("/0/user/profile")
 class UpdateUserProfile(Resource):
@@ -1408,6 +1463,7 @@ class UpdateUserProfile(Resource):
 
         return current_app.api.update_user_profile(access_token, file)
 
+
 @api.route("/0/user/<string:token>")
 class UserDetailsById(Resource):
     @copy_doc(ServerAPI.get_user_by_id)
@@ -1419,6 +1475,7 @@ class UserDetailsById(Resource):
          @return A dictionary of user details keyed by user id. Example request **. : http Example response **
         """
         return current_app.api.get_user_by_id(token)
+
 
 @api.route("/0/user/profile_photo/<string:token>")
 class DeleteUserProfilePhoto(Resource):
@@ -1441,6 +1498,7 @@ class initdb(Resource):
             print("Error")
         else:
             print("Success")
+
 
 @api.route("/0/server_status")
 class server_status(Resource):
