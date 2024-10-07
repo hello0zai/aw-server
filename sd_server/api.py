@@ -833,110 +833,131 @@ class ServerAPI:
     @check_bucket_exists
     def heartbeat(self, bucket_id: str, heartbeat: Event, pulsetime: float) -> Event:
         """
-         The event to send to the watcher. It must be a : class : ` ~swift. common. events. Event ` object
+        Handles heartbeat events and updates or creates new events based on the heartbeat data.
 
-         @param heartbeat:
-         @param bucket_id - The bucket to send the heartbeat to
-         @param pulsetime - The pulse time in seconds since the epoch.
+        Heartbeats are used to track the state of an application or user activity (e.g., AFK status).
+        If the heartbeat is identical to the last, it updates the last event's duration.
+        Otherwise, a new event is created.
 
-         @return The newly created or updated event that was sent to the
-        """
-        """
-        Heartbeats are useful when implementing watchers that simply keep
-        track of a state, how long it's in that state and when it changes.
-        A single heartbeat always has a duration of zero.
+        Args:
+            bucket_id: The bucket where the heartbeat is sent.
+            heartbeat: The heartbeat event data.
+            pulsetime: The time since the last heartbeat event in seconds.
 
-        If the heartbeat was identical to the last (apart from timestamp), then the last event has its duration updated.
-        If the heartbeat differed, then a new event is created.
-
-        Such as:
-         - Active application and window title
-           - Example: sd-watcher-window
-         - Currently open document/browser tab/playing song
-           - Example: wakatime
-           - Example: sd-watcher-web
-           - Example: sd-watcher-spotify
-         - Is the user active/inactive?
-           Send an event on some interval indicating if the user is active or not.
-           - Example: sd-watcher-afk
-
-        Inspired by: https://wakatime.com/developers#heartbeats
+        Returns:
+            The newly created or updated event.
         """
 
-        if heartbeat["data"]["app"] and heartbeat["data"]["app"] == "afk" and heartbeat["data"]["status"] == "afk":
-            store_credentials("is_afk", True)
-        elif heartbeat["data"]["app"] and heartbeat["data"]["app"] == "afk" and heartbeat["data"]["status"] != "afk":
-            store_credentials("is_afk", False)
-        if heartbeat["data"]["app"] and heartbeat["data"]["app"] != "afk"and get_credentials("is_afk"):
+        # Handle AFK status and store credentials
+        if self._handle_afk_status(heartbeat):
             return heartbeat
 
         logger.debug(
-            "Received heartbeat in bucket '{}'\n\ttimestamp: {}, duration: {}, pulsetime: {}\n\tdata: {}".format(
-                bucket_id,
-                heartbeat.timestamp,
-                heartbeat.duration,
-                pulsetime,
-                heartbeat.data,
-            )
+            "Received heartbeat in bucket '%s': timestamp: %s, duration: %s, pulsetime: %s, data: %s",
+            bucket_id,
+            heartbeat.timestamp,
+            heartbeat.duration,
+            pulsetime,
+            heartbeat.data,
         )
 
-        # The endtime here is set such that in the event that the heartbeat is older than an
-        # existing event we should try to merge it with the last event before the heartbeat instead.
-        # FIXME: This (the endtime=heartbeat.timestamp) gets rid of the "heartbeat was older than last event"
-        #        warning and also causes a already existing "newer" event to be overwritten in the
-        #        replace_last call below. This is problematic.
-        # Solution: This could be solved if we were able to replace arbitrary events.
-        #           That way we could double check that the event has been applied
-        #           and if it hasn't we simply replace it with the updated counterpart.
+        # Retrieve the last event if it exists
+        last_event = self._get_last_event(bucket_id)
 
-        last_event = None
-        # Get the last event for the bucket
-        if bucket_id not in self.last_event:
-            last_events = self.db[bucket_id].get(limit=1)
-            # Set last_event to the last event
-            if len(last_events) > 0:
-                last_event = last_events[0]
-        else:
-            last_event = self.last_event[bucket_id]
-
-        # This function is called by the heartbeat_merge function.
+        # If there's a last event, handle merging or create a new event
         if last_event:
-            # Heartbeat data is the same as heartbeat. data.
             if last_event.data == heartbeat.data:
-                merged = heartbeat_merge(last_event, heartbeat, pulsetime)
-                # If heartbeat is valid or after pulse window insert new event.
-                if merged is not None:
-                    # Heartbeat was merged into last_event
+                merged_event = heartbeat_merge(last_event, heartbeat, pulsetime)
+
+                if merged_event:
                     logger.debug(
-                        "Received valid heartbeat, merging. (bucket: {}) (app: {})".format(
-                            bucket_id, merged["data"]["app"]
-                        )
+                        "Heartbeat merged with last event (bucket: %s, app: %s)",
+                        bucket_id, merged_event["data"]["app"]
                     )
-                    self.last_event[bucket_id] = merged
-                    self.db[bucket_id].replace_last(merged)
-                    return merged
+                    self._update_last_event(bucket_id, merged_event)
+                    return merged_event
                 else:
                     logger.debug(
-                        "Received heartbeat after pulse window, inserting as new event. (bucket: {}) (app: {})".format(
-                            bucket_id, heartbeat["data"]["app"]
-                        )
+                        "Heartbeat received after pulse window, creating new event (bucket: %s, app: %s)",
+                        bucket_id, heartbeat["data"]["app"]
                     )
             else:
                 logger.debug(
-                    "Received heartbeat with differing data, inserting as new event. (bucket: {}) (app: {})".format(
-                            bucket_id, heartbeat["data"]["app"]
-                        )
+                    "Heartbeat with different data, creating new event (bucket: %s, app: %s)",
+                    bucket_id, heartbeat["data"]["app"]
                 )
         else:
             logger.info(
-                "Received heartbeat, but bucket was previously empty, inserting as new event. (bucket: {})".format(
-                    bucket_id
-                )
+                "Bucket '%s' is empty, creating new event.", bucket_id
             )
 
-        heartbeat = self.db[bucket_id].insert(heartbeat)
-        self.last_event[bucket_id] = heartbeat
-        return heartbeat
+        # Insert the new heartbeat as an event
+        return self._insert_new_event(bucket_id, heartbeat)
+
+    def _handle_afk_status(self, heartbeat: Event) -> bool:
+        """
+        Helper function to handle AFK status by storing credentials.
+
+        Returns:
+            True if the user is AFK and no further processing is needed.
+            False otherwise.
+        """
+        app = heartbeat["data"].get("app")
+        status = heartbeat["data"].get("status")
+
+        if app == "afk":
+            if status == "afk":
+                store_credentials("is_afk", True)
+            else:
+                store_credentials("is_afk", False)
+            return True
+
+        if get_credentials("is_afk"):
+            # If user is AFK, return True to stop further event processing
+            return True
+
+        return False
+
+    def _get_last_event(self, bucket_id: str) -> Event:
+        """
+        Helper function to retrieve the last event for a given bucket.
+
+        Returns:
+            The last event if it exists, or None.
+        """
+        if bucket_id not in self.last_event:
+            last_events = self.db[bucket_id].get(limit=1)
+            if last_events:
+                return last_events[0]
+        else:
+            return self.last_event[bucket_id]
+        return None
+
+    def _update_last_event(self, bucket_id: str, event: Event) -> None:
+        """
+        Helper function to update the last event in the bucket.
+
+        Args:
+            bucket_id: The bucket ID.
+            event: The event to update.
+        """
+        self.last_event[bucket_id] = event
+        self.db[bucket_id].replace_last(event)
+
+    def _insert_new_event(self, bucket_id: str, event: Event) -> Event:
+        """
+        Helper function to insert a new event into the bucket.
+
+        Args:
+            bucket_id: The bucket ID.
+            event: The new event to insert.
+
+        Returns:
+            The newly inserted event.
+        """
+        inserted_event = self.db[bucket_id].insert(event)
+        self.last_event[bucket_id] = inserted_event
+        return inserted_event
 
     def query2(self, name, query, timeperiods, cache):
         """
