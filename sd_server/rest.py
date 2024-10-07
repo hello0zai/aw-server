@@ -1,4 +1,5 @@
 import getpass
+import json
 import traceback
 from functools import wraps
 from threading import Lock
@@ -726,110 +727,95 @@ class EventResource(Resource):
         success = current_app.api.delete_event(bucket_id, event_id)
         return {"success": success}, 200
 
+def time_in_range(start, end, x):
+    """Return true if x is in the range [start, end]"""
+    if start <= end:
+        return start <= x <= end
+    else:
+        return start <= x or x <= end
+
 
 @api.route("/0/buckets/<string:bucket_id>/heartbeat")
 class HeartbeatResource(Resource):
     def __init__(self, *args, **kwargs):
-        """
-         Initialize the object. This is the first thing to do before the object is created
-        """
         self.lock = Lock()
         super().__init__(*args, **kwargs)
 
     @api.expect(event, validate=True)
-    @api.param(
-        "pulsetime", "Largest timewindow allowed between heartbeats for them to merge"
-    )
+    @api.param("pulsetime", "Largest time window allowed between heartbeats for them to merge")
     @copy_doc(ServerAPI.heartbeat)
     def post(self, bucket_id):
-        """
-        Sends a heartbeat to Sundial. This is an endpoint that can be used to check if an event is active and if it is the case.
-        @param bucket_id - The ID of the bucket to send the heartbeat to.
-        @return 200 OK if heartbeats were sent 400 Bad Request if there is no credentials in
-        """
         heartbeat_data = request.get_json()
-        if heartbeat_data['data']['title'] == '':
-            heartbeat_data['data']['title'] = heartbeat_data['data']['app']
 
-        if heartbeat_data['data']['app'] in ['ApplicationFrameHost.exe']:
-            heartbeat_data['data']['app'] = heartbeat_data['data']['title'] + '.exe'
+        if not heartbeat_data['data'].get('title'):
+            heartbeat_data['data']['title'] = heartbeat_data['data'].get('app', '')
 
-        # Set default title using the value of 'app' attribute if it's not present in the data dictionary
+        if heartbeat_data['data'].get('app') == 'ApplicationFrameHost.exe':
+            heartbeat_data['data']['app'] = f"{heartbeat_data['data']['title']}.exe"
+
+        # Retrieve settings
         settings = db_cache.retrieve("settings_cache")
         if not settings:
-            db_cache.store("settings_cache",
-                           current_app.api.retrieve_all_settings())
-        settings_code = settings.get("weekdays_schedule", {})
-        schedule = settings.get("schedule", {})
+            settings = current_app.api.retrieve_all_settings()
+            db_cache.store("settings_cache", settings)
 
-        true_week_values = [key.lower()
-                            for key, value in settings_code.items() if value is True]
+        # Extract the weekdays schedule
+        weekdays_schedule = settings.get("weekdays_schedule", {})
+        current_time = datetime.now()
+        day_name = current_time.strftime("%A").lower()
+        schedule = settings.get("schedule", False)
 
-        if settings_code.get("starttime") and settings_code.get("endtime"):
+        # Check if the current day is scheduled (True)
+        if not weekdays_schedule.get(day_name.capitalize(), False) and schedule:
+            print(f"Skipping data capture for {day_name} - not scheduled.")
+            return {"message": f"Skipping data capture for {day_name}."}, 200
+
+        # Time range check for scheduling
+        start_time_str = weekdays_schedule.get("starttime")
+        end_time_str = weekdays_schedule.get("endtime")
+
+        if start_time_str and end_time_str and schedule:
             try:
-                # Assuming the times are in 24-hour format
-                start_time_str = settings_code.get("starttime")
-                end_time_str = settings_code.get("endtime")
+                time_format = "%H:%M"
+                local_start_time = datetime.strptime(f"{current_time.date()} {start_time_str}",
+                                                     f"%Y-%m-%d {time_format}")
+                local_end_time = datetime.strptime(f"{current_time.date()} {end_time_str}", f"%Y-%m-%d {time_format}")
+                print(local_start_time,local_end_time,current_time)
 
-                # Adjust the format string to match the time format
-                time_format = "%H:%M"  # 24-hour format
+                # Check if the current time is within the scheduled range
+                if not (local_start_time <= current_time < local_end_time):
+                    print(f"Skipping data capture due to time restriction. Current time: {current_time}, "
+                          f"Scheduled start: {local_start_time}, Scheduled end: {local_end_time}.")
+                    return {"message": "Skipping data capture due to time restriction."}, 200
 
-                # Get the current date
-                current_date = datetime.now().date()
-                day_name = current_date.strftime("%A")
+            except (ValueError, json.JSONDecodeError) as e:
+                logger.error(f"Error parsing schedule: {e}")
+                return {"message": "Schedule parsing error."}, 500
 
-                # Combine date with start and end times directly
-                local_start_time = datetime.strptime(
-                    f"{current_date} {start_time_str}", f"%Y-%m-%d {time_format}")
-                local_end_time = datetime.strptime(
-                    f"{current_date} {end_time_str}", f"%Y-%m-%d {time_format}")
-
-                # Now local_start_time is a datetime object, you can use astimezone method
-                start_utc_time = local_start_time.astimezone(pytz.utc)
-                end_utc_time = local_end_time.astimezone(pytz.utc)
-
-            except json.JSONDecodeError:
-                logger.info("Error: Failed to decode JSON string")
-            except ValueError as e:
-                logger.error(f"Error: {e}")
-
-        # Check if schedule is true and contains weekdays
-        current_time_utc = datetime.now(pytz.utc)
-
-        if schedule and (day_name.lower() in true_week_values) and not (start_utc_time <= current_time_utc <= end_utc_time):
-            return {"message": "Skipping data capture."}, 200
-            # Capture data
+        # Proceed with heartbeat processing
         heartbeat = Event(**heartbeat_data)
         cached_credentials = cache_user_credentials("SD_KEYS")
-        # Returns cached credentials if cached credentials are not cached.
+
         if cached_credentials is None:
             return {"message": "No cached credentials."}, 400
 
-        # The pulsetime parameter is required.
-        pulsetime = float(request.args["pulsetime"]
-                          ) if "pulsetime" in request.args else None
-        if pulsetime is None:
-            return {"message": "Missing required parameter pulsetime"}, 400
+        try:
+            pulsetime = float(request.args.get("pulsetime"))
+        except (ValueError, TypeError):
+            return {"message": "Missing or invalid required parameter 'pulsetime'"}, 400
 
-        # This lock is meant to ensure that only one heartbeat is processed at a time,
-        # as the heartbeat function is not thread-safe.
-        # This should maybe be moved into the api.py file instead (but would be very messy).
         if not self.lock.acquire(timeout=1):
-            logger.warning(
-                "Heartbeat lock could not be acquired within a reasonable time, this likely indicates a bug."
-            )
+            logger.warning("Heartbeat lock could not be acquired within a reasonable time.")
             return {"message": "Failed to acquire heartbeat lock."}, 500
+
         try:
             event = current_app.api.heartbeat(bucket_id, heartbeat, pulsetime)
+            if event:
+                return event.to_json_dict(), 200
+            else:
+                return {"message": "Heartbeat failed."}, 500
         finally:
             self.lock.release()
-
-        if event:
-            return event.to_json_dict(), 200
-        elif not event:
-            return "event not occured"
-        else:
-            return {"message": "Heartbeat failed."}, 500
 
 
 # QUERY
