@@ -36,6 +36,10 @@ from .__about__ import __version__
 from .exceptions import NotFound
 import requests as req
 from dateutil import parser
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,19 @@ def get_device_id() -> str:
             f.write(uuid)
         return uuid
 
+def create_retry_session(retries=3, backoff_factor=0.3):
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
 
 def check_bucket_exists(f):
     @functools.wraps(f)
@@ -82,27 +99,34 @@ def _log_request_exception(e: req.RequestException):
     except json.JSONDecodeError:
         pass
 
+
 class ServerAPI:
-    def __init__(self, db, testing) -> None:
+    def __init__(self, db, testing: bool) -> None:
         """
-         Initialize the Sundial instance. This is the method that must be called by the user to initialize the Sundail instance
+        Initialize the Sundial instance. This is the method that must be called by the user to initialize the Sundial instance.
 
-         @param db - Database instance to use for communication
-         @param testing - True if we are testing False otherwise.
-
-         @return A boolean indicating success or failure of the initialization. If True the instance will be initialized
+        :param db: Database instance to use for communication.
+        :param testing: True if we are testing, False otherwise.
+        :return: None
         """
         cache_key = "Sundial"
         cache_user_credentials("SD_KEYS")
         self.db = db
         self.testing = testing
-        self.last_event = {}  # type: dict
-        self.server_address = "{protocol}://{host}".format(
-            protocol='https', host='ralvie.minervaiotdev.com'
-            # protocol='http', host='localhost:9010'
+        self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
-        )
-        self.ralvie_server_queue = RalvieServerQueue(self)
+        # Configure server address.
+        protocol = 'https'
+        host = 'ralvie.minervaiotdev.com'
+        self.server_address = f"{protocol}://{host}"
+
+        # Initialize the RalvieServerQueue for handling background sync tasks.
+        try:
+            self.ralvie_server_queue = RalvieServerQueue(self)
+            logger.info("RalvieServerQueue initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize RalvieServerQueue: {e}")
+            self.ralvie_server_queue = None
 
     def save_settings(self, code, value) -> None:
         """
@@ -372,38 +396,43 @@ class ServerAPI:
             userId = load_key("userId")
             cache_key = "SD_KEYS"
             cached_credentials = get_credentials(cache_key)
-            companyId=cached_credentials['companyId']
-            if not userId:
-                time.sleep(300)
-                userId = load_key("userId")  # Load userId again after waiting if not already loaded
-            data = self.get_non_sync_events()
-            if data and data.get("events") and userId:  # Check if data and events are available
-                # print("Total events:", len(data["events"]))
+            companyId = cached_credentials.get('companyId')
+            token = cached_credentials.get('token')
 
-                payload = {"userId": userId, "companyId":companyId, "events": data["events"]}
+            if not userId or not token:
+                logger.warning("User ID or token is missing; unable to sync.")
+                return {"status": "missing_credentials"}
+
+            data = self.get_non_sync_events()
+            if data.get("status") == "NoEvents":
+                return {"status": "NoEvents"}
+
+            events = data.get("events", [])
+            if events:
+                payload = {"userId": userId, "companyId": companyId, "events": events}
                 endpoint = "/web/event"
-                response = self._post(endpoint, payload)
+                response = self._post(endpoint, payload, {"Authorization": token})
 
                 if response.status_code == 200:
                     response_data = json.loads(response.text)
                     if response_data.get("code") == 'RCI0000':
-                        event_ids = [obj['event_id'] for obj in data["events"]]
-                        if event_ids:
-                            self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
-                            self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
-                            return {"status": "success"}
-                        else:
-                            return {"status": "no_event_ids"}  # Return status in case of no event IDs
+                        event_ids = [obj['event_id'] for obj in events]
+                        self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
+                        self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
+                        logger.info(f"Successfully synced {len(events)} events.")
+                        return {"status": "success"}
                     else:
-                        # Log error when response code is not 'RCI0000'
-                        logger.error("Response code not as expected: %s", response_data.get("code"))
-                        return {"status": "unexpected_response_code"}  # Return status for unexpected response code
+                        logger.error(f"Unexpected response code: {response_data.get('code')}")
+                        return {"status": "unexpected_response_code", "code": response_data.get("code")}
+                else:
+                    logger.error(f"Sync failed with status code: {response.status_code}")
+                    return {"status": "sync_failed", "error": response.text}
             else:
-                return {"status": "Synced_already"}
+                logger.info("No events to sync.")
+                return {"status": "no_events"}
         except Exception as e:
-            # Log the error occurred
-            logger.error("Error occurred during sync_events_to_ralvie: %s", e)
-            return {"status": "error_occurred"}  # Return status in case of exception
+            logger.error(f"Error during sync_events_to_ralvie: {e}")
+            return {"status": "error_occurred", "message": str(e)}
 
     def get_user_credentials(self, userId, token):
         """
@@ -833,131 +862,110 @@ class ServerAPI:
     @check_bucket_exists
     def heartbeat(self, bucket_id: str, heartbeat: Event, pulsetime: float) -> Event:
         """
-        Handles heartbeat events and updates or creates new events based on the heartbeat data.
+         The event to send to the watcher. It must be a : class : ` ~swift. common. events. Event ` object
 
-        Heartbeats are used to track the state of an application or user activity (e.g., AFK status).
-        If the heartbeat is identical to the last, it updates the last event's duration.
-        Otherwise, a new event is created.
+         @param heartbeat:
+         @param bucket_id - The bucket to send the heartbeat to
+         @param pulsetime - The pulse time in seconds since the epoch.
 
-        Args:
-            bucket_id: The bucket where the heartbeat is sent.
-            heartbeat: The heartbeat event data.
-            pulsetime: The time since the last heartbeat event in seconds.
+         @return The newly created or updated event that was sent to the
+        """
+        """
+        Heartbeats are useful when implementing watchers that simply keep
+        track of a state, how long it's in that state and when it changes.
+        A single heartbeat always has a duration of zero.
 
-        Returns:
-            The newly created or updated event.
+        If the heartbeat was identical to the last (apart from timestamp), then the last event has its duration updated.
+        If the heartbeat differed, then a new event is created.
+
+        Such as:
+         - Active application and window title
+           - Example: sd-watcher-window
+         - Currently open document/browser tab/playing song
+           - Example: wakatime
+           - Example: sd-watcher-web
+           - Example: sd-watcher-spotify
+         - Is the user active/inactive?
+           Send an event on some interval indicating if the user is active or not.
+           - Example: sd-watcher-afk
+
+        Inspired by: https://wakatime.com/developers#heartbeats
         """
 
-        # Handle AFK status and store credentials
-        if self._handle_afk_status(heartbeat):
+        if heartbeat["data"]["app"] and heartbeat["data"]["app"] == "afk" and heartbeat["data"]["status"] == "afk":
+            store_credentials("is_afk", True)
+        elif heartbeat["data"]["app"] and heartbeat["data"]["app"] == "afk" and heartbeat["data"]["status"] != "afk":
+            store_credentials("is_afk", False)
+        if heartbeat["data"]["app"] and heartbeat["data"]["app"] != "afk"and get_credentials("is_afk"):
             return heartbeat
 
         logger.debug(
-            "Received heartbeat in bucket '%s': timestamp: %s, duration: %s, pulsetime: %s, data: %s",
-            bucket_id,
-            heartbeat.timestamp,
-            heartbeat.duration,
-            pulsetime,
-            heartbeat.data,
+            "Received heartbeat in bucket '{}'\n\ttimestamp: {}, duration: {}, pulsetime: {}\n\tdata: {}".format(
+                bucket_id,
+                heartbeat.timestamp,
+                heartbeat.duration,
+                pulsetime,
+                heartbeat.data,
+            )
         )
 
-        # Retrieve the last event if it exists
-        last_event = self._get_last_event(bucket_id)
+        # The endtime here is set such that in the event that the heartbeat is older than an
+        # existing event we should try to merge it with the last event before the heartbeat instead.
+        # FIXME: This (the endtime=heartbeat.timestamp) gets rid of the "heartbeat was older than last event"
+        #        warning and also causes a already existing "newer" event to be overwritten in the
+        #        replace_last call below. This is problematic.
+        # Solution: This could be solved if we were able to replace arbitrary events.
+        #           That way we could double check that the event has been applied
+        #           and if it hasn't we simply replace it with the updated counterpart.
 
-        # If there's a last event, handle merging or create a new event
+        last_event = None
+        # Get the last event for the bucket
+        if bucket_id not in self.last_event:
+            last_events = self.db[bucket_id].get(limit=1)
+            # Set last_event to the last event
+            if len(last_events) > 0:
+                last_event = last_events[0]
+        else:
+            last_event = self.last_event[bucket_id]
+
+        # This function is called by the heartbeat_merge function.
         if last_event:
+            # Heartbeat data is the same as heartbeat. data.
             if last_event.data == heartbeat.data:
-                merged_event = heartbeat_merge(last_event, heartbeat, pulsetime)
-
-                if merged_event:
+                merged = heartbeat_merge(last_event, heartbeat, pulsetime)
+                # If heartbeat is valid or after pulse window insert new event.
+                if merged is not None:
+                    # Heartbeat was merged into last_event
                     logger.debug(
-                        "Heartbeat merged with last event (bucket: %s, app: %s)",
-                        bucket_id, merged_event["data"]["app"]
+                        "Received valid heartbeat, merging. (bucket: {}) (app: {})".format(
+                            bucket_id, merged["data"]["app"]
+                        )
                     )
-                    self._update_last_event(bucket_id, merged_event)
-                    return merged_event
+                    self.last_event[bucket_id] = merged
+                    self.db[bucket_id].replace_last(merged)
+                    return merged
                 else:
                     logger.debug(
-                        "Heartbeat received after pulse window, creating new event (bucket: %s, app: %s)",
-                        bucket_id, heartbeat["data"]["app"]
+                        "Received heartbeat after pulse window, inserting as new event. (bucket: {}) (app: {})".format(
+                            bucket_id, heartbeat["data"]["app"]
+                        )
                     )
             else:
                 logger.debug(
-                    "Heartbeat with different data, creating new event (bucket: %s, app: %s)",
-                    bucket_id, heartbeat["data"]["app"]
+                    "Received heartbeat with differing data, inserting as new event. (bucket: {}) (app: {})".format(
+                            bucket_id, heartbeat["data"]["app"]
+                        )
                 )
         else:
             logger.info(
-                "Bucket '%s' is empty, creating new event.", bucket_id
+                "Received heartbeat, but bucket was previously empty, inserting as new event. (bucket: {})".format(
+                    bucket_id
+                )
             )
 
-        # Insert the new heartbeat as an event
-        return self._insert_new_event(bucket_id, heartbeat)
-
-    def _handle_afk_status(self, heartbeat: Event) -> bool:
-        """
-        Helper function to handle AFK status by storing credentials.
-
-        Returns:
-            True if the user is AFK and no further processing is needed.
-            False otherwise.
-        """
-        app = heartbeat["data"].get("app")
-        status = heartbeat["data"].get("status")
-
-        if app == "afk":
-            if status == "afk":
-                store_credentials("is_afk", True)
-            else:
-                store_credentials("is_afk", False)
-            return True
-
-        if get_credentials("is_afk"):
-            # If user is AFK, return True to stop further event processing
-            return True
-
-        return False
-
-    def _get_last_event(self, bucket_id: str) -> Event:
-        """
-        Helper function to retrieve the last event for a given bucket.
-
-        Returns:
-            The last event if it exists, or None.
-        """
-        if bucket_id not in self.last_event:
-            last_events = self.db[bucket_id].get(limit=1)
-            if last_events:
-                return last_events[0]
-        else:
-            return self.last_event[bucket_id]
-        return None
-
-    def _update_last_event(self, bucket_id: str, event: Event) -> None:
-        """
-        Helper function to update the last event in the bucket.
-
-        Args:
-            bucket_id: The bucket ID.
-            event: The event to update.
-        """
-        self.last_event[bucket_id] = event
-        self.db[bucket_id].replace_last(event)
-
-    def _insert_new_event(self, bucket_id: str, event: Event) -> Event:
-        """
-        Helper function to insert a new event into the bucket.
-
-        Args:
-            bucket_id: The bucket ID.
-            event: The new event to insert.
-
-        Returns:
-            The newly inserted event.
-        """
-        inserted_event = self.db[bucket_id].insert(event)
-        self.last_event[bucket_id] = inserted_event
-        return inserted_event
+        heartbeat = self.db[bucket_id].insert(heartbeat)
+        self.last_event[bucket_id] = heartbeat
+        return heartbeat
 
     def query2(self, name, query, timeperiods, cache):
         """
@@ -1016,28 +1024,23 @@ class ServerAPI:
             return json.loads(events_json)
         else: return None
 
-    def get_non_sync_events(
-        self
-    ) -> List[Event]:
+    def get_non_sync_events(self) -> List[Event]:
         events = self.db.get_non_sync_events()
-
-        if len(events) > 0:
+        if not events:
+            logger.info("No unsynced events found.")
+            return {"status": "NoEvents", "events": []}
+        try:
             event_start = parser.isoparse(events[0]["timestamp"])
-            start_hour = event_start.hour
-            start_min = event_start.minute
-            start_date_time = event_start
-
-            # Convert events list to JSON object using custom serializer
             events_json = json.dumps({
                 "events": events,
-                "start_hour": start_hour,
-                "start_min": start_min,
-                "start_date_time": start_date_time
+                "start_hour": event_start.hour,
+                "start_min": event_start.minute,
+                "start_date_time": event_start,
             }, default=datetime_serializer)
-
             return json.loads(events_json)
-        else: return None
-
+        except Exception as e:
+            logger.error(f"Error parsing events: {e}")
+            return {"status": "error", "message": str(e)}
 
     def get_most_used_apps(
         self,
@@ -1159,37 +1162,38 @@ def event_filter(most_used_apps,data):
 
         return json.loads(events_json)  # Parse the JSON string to a Python object
 
+
 class RalvieServerQueue(threading.Thread):
     def __init__(self, server: ServerAPI) -> None:
-        threading.Thread.__init__(self, daemon=True)
+        super().__init__(daemon=True)  # Initialize as a daemon thread
 
         self.server = server
         self.userId = ""
         self.connected = False
         self._stop_event = threading.Event()
-        self._attempt_reconnect_interval = 10
+        self._attempt_reconnect_interval = 10  # Interval between reconnection attempts
 
     def _try_connect(self) -> bool:
-        try:  # Try to connect
-            db_key = ""
+        try:
             cache_key = "Sundial"
-            cached_credentials = cache_user_credentials("SD_KEYS")
-            if cached_credentials != None:
+            cached_credentials = cache_user_credentials(cache_key)
+            if cached_credentials:
                 db_key = cached_credentials.get("encrypted_db_key")
-            else:
-                db_key == None
-            key = load_key("user_key")
-            if db_key == None or key == None:
-                self.connected = False
-                return self.connected
-            self.userId = load_key("userId")
-            self.connected = True
-        except Exception:
-            self.connected = False
+                user_key = load_key("user_key")
+                self.userId = load_key("userId")
 
+                if db_key and user_key and self.userId:
+                    self.connected = True
+                    return True
+                else:
+                    logger.warning("Missing necessary keys for connection.")
+            self.connected = False
+        except Exception as e:
+            logger.error(f"Failed to connect: {e}")
+            self.connected = False
         return self.connected
 
-    def wait(self, seconds) -> bool:
+    def wait(self, seconds: int) -> bool:
         return self._stop_event.wait(seconds)
 
     def should_stop(self) -> bool:
@@ -1199,11 +1203,32 @@ class RalvieServerQueue(threading.Thread):
         self._stop_event.set()
 
     def run(self) -> None:
-        while True:
+        # Attempt to establish a connection on start
+        if not self._try_connect():
+            logger.info("Initial connection attempt failed. Will retry.")
+
+        while not self.should_stop():
+            # Check internet connection and attempt to sync
             if is_internet_connected():
-                print("Connected to internet")
-                self.server.sync_events_to_ralvie()
-                time.sleep(300)
+                if not self.connected:
+                    logger.info("Attempting to reconnect...")
+                    self._try_connect()
+
+                if self.connected:
+                    logger.info("Connected to internet. Attempting to sync events.")
+                    try:
+                        sync_result = self.server.sync_events_to_ralvie()
+                        logger.info(f"Sync result: {sync_result}")
+                    except Exception as e:
+                        logger.error(f"Error during sync: {e}")
+                else:
+                    logger.warning("Not connected. Retrying in a few seconds.")
+            else:
+                logger.warning("No internet connection. Waiting to retry...")
+
+            # Wait for the defined interval before trying again, respecting stop events.
+            self.wait(300)
+
 
 def group_events_by_application(events):
     grouped_events = {}

@@ -1372,37 +1372,42 @@ class SyncServer(Resource):
 
 @api.route("/0/launchOnStart")
 class LaunchOnStart(Resource):
-    def post(self):
-        status = request.json.get("status")
+    @api.doc(security="Bearer")
+    def get(self):
+        status = request.args.get("status", type=str)  # Expecting status as a query parameter
+
+        if status is None:
+            return {"error": "Status is required in the request query."}, 400
+
+        # Convert status to boolean
+        status = status.lower() in ["start"]
+
         if sys.platform == "darwin":
-
-            if status is None:
-                return {"error": "Status is required in the request body."}, 400
-
             if status:
-                launch_app()
+                launch_app()  # Ensure this function is defined
                 state = True
                 current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start enabled."}, 200
             else:
                 state = False
-                delete_launch_app()
+                delete_launch_app()  # Ensure this function is defined
                 current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start disabled."}, 200
+
         elif sys.platform == "win32":
-            if status is None:
-                return {"error": "Status is required in the request body."}, 400
-
             if status:
                 state = True
-                set_autostart_registry(autostart=True)
+                set_autostart_registry(autostart=True)  # Ensure this function is defined
                 current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start enabled."}, 200
             else:
                 state = False
-                set_autostart_registry(autostart=False)
+                set_autostart_registry(autostart=False)  # Ensure this function is defined
                 current_app.api.save_settings("launch", state)
                 return {"message": "Launch on start disabled."}, 200
+
+        else:
+            return {"error": "Unsupported platform."}, 400  # Handle unsupported platforms
 
 # Refresh token
 
