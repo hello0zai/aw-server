@@ -286,10 +286,13 @@ class UserResource(Resource):
                             reset_user()
                             return {"message": "Something went wrong"}, 500
                     else:
+                        print(companyResult.text)
                         return json.loads(companyResult.text), 200
                 else:
+                    print(authResult.text)
                     return json.loads(authResult.text), 200
             else:
+                print(result.text)
                 return json.loads(result.text), 200
         else:
             return {"message": "User already exist"}, 200
@@ -430,6 +433,7 @@ class RalvieLoginResource(Resource):
             user_id = json.loads(auth_result.text)["data"]["id"]
             current_app.api.get_user_credentials(user_id, 'Bearer ' + token)
             init_db = current_app.api.init_db()
+            print(init_db)
 
             # Reset the user to the default user
             if not init_db:
@@ -1373,38 +1377,46 @@ class SyncServer(Resource):
 @api.route("/0/launchOnStart")
 class LaunchOnStart(Resource):
     @api.doc(security="Bearer")
-    def get(self):
-        status = request.args.get("status", type=str)  # Expecting status as a query parameter
+    def post(self):
+        # Expecting status as a JSON payload (true or false)
+        data = request.get_json()
+
+        if data is None:
+            return {"error": "No JSON payload provided."}, 400
+
+        status = data.get("status")
 
         if status is None:
-            return {"error": "Status is required in the request query."}, 400
+            return {"error": "Status is required in the request body."}, 400
 
-        # Convert status to boolean
-        status = status.lower() in ["start"]
+        # Convert status to a boolean (True or False)
+        if isinstance(status, bool):
+            state = status
+        elif status.lower() == "true":
+            state = True
+        elif status.lower() == "false":
+            state = False
+        else:
+            return {"error": "Invalid status value. Expected 'true' or 'false'."}, 400
 
+        # Handle platform-specific logic
         if sys.platform == "darwin":
-            if status:
+            if state:
                 launch_app()  # Ensure this function is defined
-                state = True
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start enabled."}, 200
             else:
-                state = False
                 delete_launch_app()  # Ensure this function is defined
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start disabled."}, 200
+            current_app.api.save_settings("launch", state)  # Save the state (True or False)
+            message = "Launch on start enabled." if state else "Launch on start disabled."
+            return {"message": message}, 200
 
         elif sys.platform == "win32":
-            if status:
-                state = True
+            if state:
                 set_autostart_registry(autostart=True)  # Ensure this function is defined
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start enabled."}, 200
             else:
-                state = False
                 set_autostart_registry(autostart=False)  # Ensure this function is defined
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start disabled."}, 200
+            current_app.api.save_settings("launch", state)  # Save the state (True or False)
+            message = "Launch on start enabled." if state else "Launch on start disabled."
+            return {"message": message}, 200
 
         else:
             return {"error": "Unsupported platform."}, 400  # Handle unsupported platforms
