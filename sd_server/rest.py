@@ -1,6 +1,7 @@
 import getpass
 import json
 import traceback
+from dis import CACHE
 from functools import wraps
 from threading import Lock
 from typing import Dict
@@ -32,6 +33,7 @@ from sd_qt.manager import Manager
 
 application_cache_key = "application_cache"
 manager = Manager()
+CACHE_KEY = "Sundial"
 
 
 def get_potential_location_and_zone(minutes_difference):
@@ -230,8 +232,7 @@ class UserResource(Resource):
 
          @return a dictionary containing the user's details and a boolean indicating if the user was
         """
-        cache_key = "Sundial"
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials(CACHE_KEY)
         # If internet connection is not connected to internet and try again.
         if not is_internet_connected():
             print("Please connect to internet and try again.")
@@ -341,8 +342,7 @@ class LoginResource(Resource):
          @return Response code and JSON
         """
         data = request.get_json()
-        cache_key = "Sundial"
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials(CACHE_KEY)
         user_key = cached_credentials.get("user_key")
 
         # Returns a JSON object with the user_key data.
@@ -365,8 +365,7 @@ class LoginResource(Resource):
          @return 200 if user exist 401 if user does not exist
         """
         data = request.get_json()
-        cache_key = "Sundial"
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials(CACHE_KEY)
         # Returns the encrypted_db_key if the cached credentials are cached.
         if cached_credentials is not None:
             user_key = cached_credentials.get("encrypted_db_key")
@@ -389,7 +388,6 @@ class RalvieLoginResource(Resource):
 
          @return A JSON with the result of the authentication and user
         """
-        cache_key = "Sundial"
         refresh_token = ""
         # Check Internet Connectivity
         response_data = {}
@@ -420,7 +418,7 @@ class RalvieLoginResource(Resource):
         # Returns a JSON response with the user credentials.
         if auth_result.status_code == 200 and json.loads(auth_result.text)["code"] == 'UASI0011':
             # Retrieve Cached User Credentials
-            cached_credentials = cache_user_credentials("SD_KEYS")
+            cached_credentials = cache_user_credentials(CACHE_KEY)
             token = json.loads(auth_result.text)["data"]["access_token"]
             # Get the User Key
             user_key = cached_credentials.get(
@@ -443,10 +441,10 @@ class RalvieLoginResource(Resource):
             # Generate JWT
             payload = {
                 "user": getpass.getuser(),
-                "email": cache_user_credentials("SD_KEYS").get("email"),
-                "phone": cache_user_credentials("SD_KEYS").get("phone"),
+                "email": cache_user_credentials(CACHE_KEY).get("email"),
+                "phone": cache_user_credentials(CACHE_KEY).get("phone"),
             }
-            encoded_jwt = jwt.encode(payload, cache_user_credentials("SD_KEYS").get("user_key"),
+            encoded_jwt = jwt.encode(payload, cache_user_credentials(CACHE_KEY).get("user_key"),
                                      algorithm="HS256")
 
             # Response
@@ -798,7 +796,7 @@ class HeartbeatResource(Resource):
 
         # Proceed with heartbeat processing
         heartbeat = Event(**heartbeat_data)
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials(CACHE_KEY)
 
         if cached_credentials is None:
             return {"message": "No cached credentials."}, 400
@@ -1270,8 +1268,7 @@ class User(Resource):
 
          @return JSON with firstname lastname and email or False if not
         """
-        cache_key = "Sundial"
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials(CACHE_KEY)
         user_key = cached_credentials.get(
             "encrypted_db_key") if cached_credentials else None
         # Returns a JSON response with the user s credentials.
