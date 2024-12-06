@@ -16,6 +16,7 @@ import iso8601
 from sd_core import schema, db_cache
 from sd_core.models import Event
 from sd_core.cache import *
+from sd_core.db_cache import delete
 from sd_query.exceptions import QueryException
 from flask import (
     Blueprint,
@@ -1040,7 +1041,6 @@ class GetAllSettings(Resource):
             db_cache.cache_data(
                 "settings_cache", current_app.api.retrieve_all_settings())
             settings_dict = db_cache.cache_data("settings_cache")
-
         return settings_dict
 
 
@@ -1208,54 +1208,26 @@ class Status(Resource):
 
 
 @api.route('/0/idletime')
-class Idletime(Resource):
+class idletime(Resource):
     @api.doc(security="Bearer")
     def get(self):
         """
-        Manage the idle time state by starting or stopping the 'sd-watcher-afk' module.
+         Get list of modules. This is a GET request to / modules. The response is a JSON object with a list of modules.
 
-        The 'status' query parameter controls whether the module is started or stopped:
-        - If 'status' is 'start', the module is started.
-        - If 'status' is 'stop', the module is stopped.
 
-        @return a JSON object with a message indicating the new state.
+         @return a JSON object with a list of modules in the
         """
-
-        try:
-            module = manager.module_status("sd-watcher-afk")
-            status = request.args.get("status")
-
-            if module is None or "is_alive" not in module:
-                return {"message": "Module status could not be retrieved"}, 500
+        module = manager.module_status("aw-watcher-afk")
+        if module["is_alive"]:
+            manager.stop("aw-watcher-afk")
+            message = "idle time has stoppped"
             state = False
-            # Check the status argument and start/stop the module accordingly
-            if status == "start":
-                if not module["is_alive"]:
-                    manager.start("sd-watcher-afk")
-                    message = "Idle time has started"
-                    state = True
-                else:
-                    message = "Idle time is already running"
-                    state = True
-            elif status == "stop":
-                if module["is_alive"]:
-                    manager.stop("sd-watcher-afk")
-                    message = "Idle time has stopped"
-                    state = False
-                else:
-                    message = "Idle time is already stopped"
-                    state = False
-            else:
-                return {"message": "Invalid status parameter. Use 'start' or 'stop'."}, 400
-
-            # Save the new idle time state in the settings
-            current_app.api.save_settings("idle_time", state)
-            return {"message": message}, 200
-
-        except Exception as e:
-            logger.error(f"Error handling idle time: {str(e)}")
-            return {"message": "An error occurred while managing idle time."}, 500
-
+        else:
+            manager.start("aw-watcher-afk")
+            message = "idle time has started"
+            state = True
+        current_app.api.save_settings("idle_time",state)
+        return {"message": message}, 200
 
 
 @api.route('/0/credentials')
@@ -1370,50 +1342,41 @@ class SyncServer(Resource):
 class LaunchOnStart(Resource):
     @api.doc(security="Bearer")
     def post(self):
-        # Expecting status as a JSON payload (true or false)
+        # Expecting a JSON payload with the 'status' as a boolean (True or False)
         data = request.get_json()
 
-        if data is None:
-            return {"error": "No JSON payload provided."}, 400
+        if not data or "status" not in data:
+            return {"error": "Status is required and should be a boolean value."}, 400
 
-        status = data.get("status")
+        status = data["status"]
 
-        if status is None:
-            return {"error": "Status is required in the request body."}, 400
+        # Ensure the status is a boolean
+        if not isinstance(status, bool):
+            return {"error": "Invalid status value. Expected a boolean (true or false)."}, 400
 
-        # Convert status to a boolean (True or False)
-        if isinstance(status, bool):
-            state = status
-        elif status.lower() == "true":
-            state = True
-        elif status.lower() == "false":
-            state = False
-        else:
-            return {"error": "Invalid status value. Expected 'true' or 'false'."}, 400
-
-        # Handle platform-specific logic
+        # Platform-specific logic to handle launch on start
         if sys.platform == "darwin":
-            if state:
-                launch_app()  # Ensure this function is defined
-            else:
-                delete_launch_app()  # Ensure this function is defined
-            current_app.api.save_settings("launch", state)  # Save the state (True or False)
-            message = "Launch on start enabled." if state else "Launch on start disabled."
-            return {"message": message}, 200
-
+            self._handle_mac(status)
         elif sys.platform == "win32":
-            if state:
-                set_autostart_registry(autostart=True)  # Ensure this function is defined
-            else:
-                set_autostart_registry(autostart=False)  # Ensure this function is defined
-            current_app.api.save_settings("launch", state)  # Save the state (True or False)
-            message = "Launch on start enabled." if state else "Launch on start disabled."
-            return {"message": message}, 200
-
+            self._handle_windows(status)
         else:
-            return {"error": "Unsupported platform."}, 400  # Handle unsupported platforms
+            return {"error": "Unsupported platform."}, 400
 
-# Refresh token
+        # Save the new state and respond
+        current_app.api.save_settings("launch", status)
+        message = "Launch on start enabled." if status else "Launch on start disabled."
+        return {"message": message}, 200
+
+    def _handle_mac(self, status):
+        """Handles macOS-specific logic for launch on start."""
+        if status:
+            launch_app()  # Ensure launch_app() is defined elsewhere
+        else:
+            delete_launch_app()  # Ensure delete_launch_app() is defined elsewhere
+
+    def _handle_windows(self, status):
+        """Handles Windows-specific logic for launch on start."""
+        set_autostart_registry(autostart=status)  # Ensure set_autostart_registry() is defined elsewhere
 
 
 @api.route("/0/ralvie/refresh_token")
@@ -1499,3 +1462,15 @@ class initdb(Resource):
 class server_status(Resource):
     def get(self):
         return 200
+
+@api.route("/0/signout")
+class SignOut(Resource):
+    def get(self):
+        clear_all_credentials("Sundial")
+        delete("settings_cache")
+
+@api.route("/0/userCredentials")
+class get_user_credentials(Resource):
+    def get(self):
+        credentials = cache_user_credentials(CACHE_KEY)
+        return credentials
