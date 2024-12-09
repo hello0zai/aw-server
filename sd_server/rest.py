@@ -1226,6 +1226,7 @@ class idletime(Resource):
             manager.start("aw-watcher-afk")
             message = "idle time has started"
             state = True
+        print(message)
         current_app.api.save_settings("idle_time",state)
         return {"message": message}, 200
 
@@ -1466,7 +1467,7 @@ class server_status(Resource):
 @api.route("/0/signout")
 class SignOut(Resource):
     def get(self):
-        clear_all_credentials("Sundial")
+        delete_credentials("Sundial")
         delete("settings_cache")
 
 @api.route("/0/userCredentials")
