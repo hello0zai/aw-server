@@ -1217,13 +1217,13 @@ class idletime(Resource):
 
          @return a JSON object with a list of modules in the
         """
-        module = manager.module_status("aw-watcher-afk")
+        module = manager.module_status("sd-watcher-afk")
         if module["is_alive"]:
-            manager.stop("aw-watcher-afk")
+            manager.stop("sd-watcher-afk")
             message = "idle time has stoppped"
             state = False
         else:
-            manager.start("aw-watcher-afk")
+            manager.start("sd-watcher-afk")
             message = "idle time has started"
             state = True
         print(message)
@@ -1475,3 +1475,12 @@ class get_user_credentials(Resource):
     def get(self):
         credentials = cache_user_credentials(CACHE_KEY)
         return credentials
+
+@api.route("/0/user_status")
+class login_status(Resource):
+    def get(self):
+        credentials = cache_user_credentials(CACHE_KEY)
+        if credentials and credentials['userId']:
+            return {"status":True}
+        else:
+            return {"status": False}
