@@ -448,6 +448,12 @@ class RalvieLoginResource(Resource):
             encoded_jwt = jwt.encode(payload, cache_user_credentials(CACHE_KEY).get("user_key"),
                                      algorithm="HS256")
 
+            credentials = cache_user_credentials(CACHE_KEY)
+            print()
+            credentials['access_token'] = token
+
+            add_password(CACHE_KEY, json.dumps(credentials))
+
             # Response
             response_data['code'] = "UASI0011",
             response_data["message"] = json.loads(auth_result.text)["message"],
@@ -1480,7 +1486,7 @@ class get_user_credentials(Resource):
 class login_status(Resource):
     def get(self):
         credentials = cache_user_credentials(CACHE_KEY)
-        if credentials and credentials['userId']:
-            return {"status":True}
+        if credentials and credentials['access_token']:
+            return {"status":True,"access_token":credentials['access_token']}
         else:
             return {"status": False}
