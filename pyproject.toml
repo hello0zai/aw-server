@@ -24,6 +24,7 @@ xlsxwriter="*"
 tzlocal="*"
 xhtml2pdf="*"
 reportlab="*"
+python-dateutil = "^2.9.0.post0"
 
 [tool.poetry.dev-dependencies]
 mypy = "*"
