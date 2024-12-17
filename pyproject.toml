@@ -19,7 +19,6 @@ flask-cors = "*"
 importlib-metadata = {version = "*", python = "<3.10"}
 werkzeug = "^2.3.3"
 pyjwt="*"
-pandas="*"
 pdfkit="*"
 xlsxwriter="*"
 tzlocal="*"

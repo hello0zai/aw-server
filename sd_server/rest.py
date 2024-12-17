@@ -1,7 +1,6 @@
 import getpass
 import json
 import traceback
-from dis import CACHE
 from functools import wraps
 from threading import Lock
 from typing import Dict
@@ -10,13 +9,12 @@ import pytz
 from dateutil.parser import parse
 from sd_core.launch_start import delete_launch_app, launch_app, check_startup_status, set_autostart_registry
 from sd_core.util import authenticate, is_internet_connected, reset_user
-import pandas as pd
+# import pandas as pd
 from datetime import datetime, timedelta, date, time
 import iso8601
 from sd_core import schema, db_cache
 from sd_core.models import Event
 from sd_core.cache import *
-from sd_core.db_cache import delete
 from sd_query.exceptions import QueryException
 from flask import (
     Blueprint,
@@ -34,7 +32,6 @@ from sd_qt.manager import Manager
 
 application_cache_key = "application_cache"
 manager = Manager()
-CACHE_KEY = "Sundial"
 
 
 def get_potential_location_and_zone(minutes_difference):
@@ -233,7 +230,8 @@ class UserResource(Resource):
 
          @return a dictionary containing the user's details and a boolean indicating if the user was
         """
-        cached_credentials = cache_user_credentials(CACHE_KEY)
+        cache_key = "Sundial"
+        cached_credentials = cache_user_credentials("Sundial")
         # If internet connection is not connected to internet and try again.
         if not is_internet_connected():
             print("Please connect to internet and try again.")
@@ -288,13 +286,10 @@ class UserResource(Resource):
                             reset_user()
                             return {"message": "Something went wrong"}, 500
                     else:
-                        print(companyResult.text)
                         return json.loads(companyResult.text), 200
                 else:
-                    print(authResult.text)
                     return json.loads(authResult.text), 200
             else:
-                print(result.text)
                 return json.loads(result.text), 200
         else:
             return {"message": "User already exist"}, 200
@@ -343,7 +338,8 @@ class LoginResource(Resource):
          @return Response code and JSON
         """
         data = request.get_json()
-        cached_credentials = cache_user_credentials(CACHE_KEY)
+        cache_key = "Sundial"
+        cached_credentials = cache_user_credentials("Sundial")
         user_key = cached_credentials.get("user_key")
 
         # Returns a JSON object with the user_key data.
@@ -366,7 +362,8 @@ class LoginResource(Resource):
          @return 200 if user exist 401 if user does not exist
         """
         data = request.get_json()
-        cached_credentials = cache_user_credentials(CACHE_KEY)
+        cache_key = "Sundial"
+        cached_credentials = cache_user_credentials("Sundial")
         # Returns the encrypted_db_key if the cached credentials are cached.
         if cached_credentials is not None:
             user_key = cached_credentials.get("encrypted_db_key")
@@ -389,6 +386,7 @@ class RalvieLoginResource(Resource):
 
          @return A JSON with the result of the authentication and user
         """
+        cache_key = "Sundial"
         refresh_token = ""
         # Check Internet Connectivity
         response_data = {}
@@ -400,7 +398,7 @@ class RalvieLoginResource(Resource):
         data = request.get_json()
         user_name = data.get('userName')
         password = data.get('password')
-        companyId = data.get('companyID', None)
+        companyId = data.get('companyId', None)
         print(user_name, password, companyId)
         user_id = None
 
@@ -419,7 +417,7 @@ class RalvieLoginResource(Resource):
         # Returns a JSON response with the user credentials.
         if auth_result.status_code == 200 and json.loads(auth_result.text)["code"] == 'UASI0011':
             # Retrieve Cached User Credentials
-            cached_credentials = cache_user_credentials(CACHE_KEY)
+            cached_credentials = cache_user_credentials("Sundial")
             token = json.loads(auth_result.text)["data"]["access_token"]
             # Get the User Key
             user_key = cached_credentials.get(
@@ -432,7 +430,6 @@ class RalvieLoginResource(Resource):
             user_id = json.loads(auth_result.text)["data"]["id"]
             current_app.api.get_user_credentials(user_id, 'Bearer ' + token)
             init_db = current_app.api.init_db()
-            print(init_db)
 
             # Reset the user to the default user
             if not init_db:
@@ -442,17 +439,11 @@ class RalvieLoginResource(Resource):
             # Generate JWT
             payload = {
                 "user": getpass.getuser(),
-                "email": cache_user_credentials(CACHE_KEY).get("email"),
-                "phone": cache_user_credentials(CACHE_KEY).get("phone"),
+                "email": cache_user_credentials("Sundial").get("email"),
+                "phone": cache_user_credentials("Sundial").get("phone"),
             }
-            encoded_jwt = jwt.encode(payload, cache_user_credentials(CACHE_KEY).get("user_key"),
+            encoded_jwt = jwt.encode(payload, cache_user_credentials("Sundial").get("user_key"),
                                      algorithm="HS256")
-
-            credentials = cache_user_credentials(CACHE_KEY)
-            print()
-            credentials['access_token'] = token
-
-            add_password(CACHE_KEY, json.dumps(credentials))
 
             # Response
             response_data['code'] = "UASI0011",
@@ -803,7 +794,7 @@ class HeartbeatResource(Resource):
 
         # Proceed with heartbeat processing
         heartbeat = Event(**heartbeat_data)
-        cached_credentials = cache_user_credentials(CACHE_KEY)
+        cached_credentials = cache_user_credentials("Sundial")
 
         if cached_credentials is None:
             return {"message": "No cached credentials."}, 400
@@ -982,8 +973,13 @@ class SaveSettings(Resource):
                     code=code, value=value_json)
 
                 # Prepare response dictionary
+                result_dict = {
+                    "id": result.id,  # Assuming id is the primary key of SettingsModel
+                    "code": result.code,
+                    "value": value_json  # Use the converted value
+                }
 
-                return result, 200  # Return the result dictionary with a 200 status code
+                return result_dict, 200  # Return the result dictionary with a 200 status code
             else:
                 # Handle the case where 'code' or 'value' is missing in the JSON body
                 return {"message": "Both 'code' and 'value' must be provided"}, 400
@@ -1047,6 +1043,7 @@ class GetAllSettings(Resource):
             db_cache.cache_data(
                 "settings_cache", current_app.api.retrieve_all_settings())
             settings_dict = db_cache.cache_data("settings_cache")
+
         return settings_dict
 
 
@@ -1214,27 +1211,54 @@ class Status(Resource):
 
 
 @api.route('/0/idletime')
-class idletime(Resource):
+class Idletime(Resource):
     @api.doc(security="Bearer")
     def get(self):
         """
-         Get list of modules. This is a GET request to / modules. The response is a JSON object with a list of modules.
+        Manage the idle time state by starting or stopping the 'sd-watcher-afk' module.
 
+        The 'status' query parameter controls whether the module is started or stopped:
+        - If 'status' is 'start', the module is started.
+        - If 'status' is 'stop', the module is stopped.
 
-         @return a JSON object with a list of modules in the
+        @return a JSON object with a message indicating the new state.
         """
-        module = manager.module_status("sd-watcher-afk")
-        if module["is_alive"]:
-            manager.stop("sd-watcher-afk")
-            message = "idle time has stoppped"
+
+        try:
+            module = manager.module_status("sd-watcher-afk")
+            status = request.args.get("status")
+
+            if module is None or "is_alive" not in module:
+                return {"message": "Module status could not be retrieved"}, 500
             state = False
-        else:
-            manager.start("sd-watcher-afk")
-            message = "idle time has started"
-            state = True
-        print(message)
-        current_app.api.save_settings("idle_time",state)
-        return {"message": message}, 200
+            # Check the status argument and start/stop the module accordingly
+            if status == "start":
+                if not module["is_alive"]:
+                    manager.start("sd-watcher-afk")
+                    message = "Idle time has started"
+                    state = True
+                else:
+                    message = "Idle time is already running"
+                    state = True
+            elif status == "stop":
+                if module["is_alive"]:
+                    manager.stop("sd-watcher-afk")
+                    message = "Idle time has stopped"
+                    state = False
+                else:
+                    message = "Idle time is already stopped"
+                    state = False
+            else:
+                return {"message": "Invalid status parameter. Use 'start' or 'stop'."}, 400
+
+            # Save the new idle time state in the settings
+            current_app.api.save_settings("idle_time", state)
+            return {"message": message}, 200
+
+        except Exception as e:
+            logger.error(f"Error handling idle time: {str(e)}")
+            return {"message": "An error occurred while managing idle time."}, 500
+
 
 
 @api.route('/0/credentials')
@@ -1247,7 +1271,8 @@ class User(Resource):
 
          @return JSON with firstname lastname and email or False if not
         """
-        cached_credentials = cache_user_credentials(CACHE_KEY)
+        cache_key = "Sundial"
+        cached_credentials = cache_user_credentials("Sundial")
         user_key = cached_credentials.get(
             "encrypted_db_key") if cached_credentials else None
         # Returns a JSON response with the user s credentials.
@@ -1348,42 +1373,43 @@ class SyncServer(Resource):
 @api.route("/0/launchOnStart")
 class LaunchOnStart(Resource):
     @api.doc(security="Bearer")
-    def post(self):
-        # Expecting a JSON payload with the 'status' as a boolean (True or False)
-        data = request.get_json()
+    def get(self):
+        status = request.args.get("status", type=str)  # Expecting status as a query parameter
 
-        if not data or "status" not in data:
-            return {"error": "Status is required and should be a boolean value."}, 400
+        if status is None:
+            return {"error": "Status is required in the request query."}, 400
 
-        status = data["status"]
+        # Convert status to boolean
+        status = status.lower() in ["start"]
 
-        # Ensure the status is a boolean
-        if not isinstance(status, bool):
-            return {"error": "Invalid status value. Expected a boolean (true or false)."}, 400
-
-        # Platform-specific logic to handle launch on start
         if sys.platform == "darwin":
-            self._handle_mac(status)
+            if status:
+                launch_app()  # Ensure this function is defined
+                state = True
+                current_app.api.save_settings("launch", state)
+                return {"message": "Launch on start enabled."}, 200
+            else:
+                state = False
+                delete_launch_app()  # Ensure this function is defined
+                current_app.api.save_settings("launch", state)
+                return {"message": "Launch on start disabled."}, 200
+
         elif sys.platform == "win32":
-            self._handle_windows(status)
+            if status:
+                state = True
+                set_autostart_registry(autostart=True)  # Ensure this function is defined
+                current_app.api.save_settings("launch", state)
+                return {"message": "Launch on start enabled."}, 200
+            else:
+                state = False
+                set_autostart_registry(autostart=False)  # Ensure this function is defined
+                current_app.api.save_settings("launch", state)
+                return {"message": "Launch on start disabled."}, 200
+
         else:
-            return {"error": "Unsupported platform."}, 400
+            return {"error": "Unsupported platform."}, 400  # Handle unsupported platforms
 
-        # Save the new state and respond
-        current_app.api.save_settings("launch", status)
-        message = "Launch on start enabled." if status else "Launch on start disabled."
-        return {"message": message}, 200
-
-    def _handle_mac(self, status):
-        """Handles macOS-specific logic for launch on start."""
-        if status:
-            launch_app()  # Ensure launch_app() is defined elsewhere
-        else:
-            delete_launch_app()  # Ensure delete_launch_app() is defined elsewhere
-
-    def _handle_windows(self, status):
-        """Handles Windows-specific logic for launch on start."""
-        set_autostart_registry(autostart=status)  # Ensure set_autostart_registry() is defined elsewhere
+# Refresh token
 
 
 @api.route("/0/ralvie/refresh_token")
@@ -1469,24 +1495,3 @@ class initdb(Resource):
 class server_status(Resource):
     def get(self):
         return 200
-
-@api.route("/0/signout")
-class SignOut(Resource):
-    def get(self):
-        delete_credentials("Sundial")
-        delete("settings_cache")
-
-@api.route("/0/userCredentials")
-class get_user_credentials(Resource):
-    def get(self):
-        credentials = cache_user_credentials(CACHE_KEY)
-        return credentials
-
-@api.route("/0/user_status")
-class login_status(Resource):
-    def get(self):
-        credentials = cache_user_credentials(CACHE_KEY)
-        if credentials and credentials['access_token']:
-            return {"status":True,"access_token":credentials['access_token']}
-        else:
-            return {"status": False}
