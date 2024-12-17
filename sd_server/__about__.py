@@ -16,7 +16,7 @@ projectpath = srcpath.parent
 bundlepath = projectpath.parent  # the ActivityWatch bundle repo, in some circumstances
 
 # This line set by script when run (metaprogramming)
-__version__ = "v0.12.0.dev+cb6af3c"
+__version__ = "v0.12.0.dev+37c1934"
 
 
 def get_rev():

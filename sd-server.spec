@@ -16,7 +16,6 @@ a = Analysis(['__main__.py'],
              pathex=[],
              binaries=None,
              datas=[
-                ('sd_server/static', 'sd_server/static'),
                 (os.path.join(restx_path, 'templates'), 'flask_restx/templates'),
                 (os.path.join(restx_path, 'static'), 'flask_restx/static'),
                 (os.path.join(sd_core_path, 'schemas'), 'sd_core/schemas')

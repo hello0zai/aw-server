@@ -5,7 +5,6 @@ from typing import Dict, List
 import webbrowser
 import sd_datastore
 import flask.json.provider
-from pycodestyle import continued_indentation
 from sd_datastore import Datastore
 from flask import (
     Blueprint,
@@ -14,8 +13,6 @@ from flask import (
     send_from_directory,
 )
 from flask_cors import CORS
-from sd_core.cache import cache_user_credentials
-from sd_qt.util import cached_credentials
 
 from . import rest
 from .api import ServerAPI
@@ -202,12 +199,6 @@ def _start(
         cors_origins=cors_origins,
         custom_static=custom_static,
     )
-
-    cached_credentials = cache_user_credentials("Sundial")
-    if cached_credentials and cached_credentials['userId']:
-        pass
-    else:
-        webbrowser.open(f"http://{host}:{port}", new=0, autoraise=True)
 
     try:
         app.run(

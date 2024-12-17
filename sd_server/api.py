@@ -409,7 +409,6 @@ class ServerAPI:
                 return {"status": "NoEvents"}
 
             events = data.get("events", [])
-            print("events ", events)
             if events:
                 payload = {"userId": userId, "companyId": companyId, "events": events}
                 endpoint = "/web/event"
