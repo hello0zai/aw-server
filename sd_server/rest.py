@@ -776,7 +776,7 @@ class HeartbeatResource(Resource):
 
         if start_time_str and end_time_str and schedule:
             try:
-                time_format = "%H:%M"
+                time_format = "%H:%M:%S"
                 local_start_time = datetime.strptime(f"{current_time.date()} {start_time_str}",
                                                      f"%Y-%m-%d {time_format}")
                 local_end_time = datetime.strptime(f"{current_time.date()} {end_time_str}", f"%Y-%m-%d {time_format}")
