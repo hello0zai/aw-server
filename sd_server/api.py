@@ -43,6 +43,10 @@ from requests.packages.urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
+if os.environ.get('SSLKEYLOGFILE'):
+    os.environ.pop('SSLKEYLOGFILE', None)
+
+
 def get_device_id() -> str:
     path = Path(get_data_dir("sd-server")) / "device_id"
     if path.exists():
@@ -1004,8 +1008,8 @@ class ServerAPI:
         end: Optional[datetime] = None,
     ) -> List[Event]:
         events = self.db.get_dashboard_events(starttime=start,endtime=end)
-
-        # groupedEvents = group_events_by_application(events)
+        # print("eventssssss", events)
+        # groupedEvents = group_events_by_application(events)   
 
         if len(events) > 0:
             event_start = parser.isoparse(events[0]["timestamp"])
