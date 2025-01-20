@@ -6,7 +6,6 @@ from functools import wraps
 from threading import Lock
 from typing import Dict
 from datetime import datetime, timedelta, date, time
-
 import iso8601
 import pytz
 import jwt
@@ -29,6 +28,8 @@ from . import logger
 from .api import ServerAPI
 from .exceptions import BadRequest, Unauthorized
 from sd_qt.manager import Manager
+import os
+import shutil
 
 application_cache_key = "application_cache"
 manager = Manager()
@@ -400,8 +401,7 @@ class RalvieLoginResource(Resource):
         password = data.get('password')
         companyId = data.get('companyId', None)
         print(user_name, password, companyId)
-        user_id = None
-
+        user_id = None        
         # JSON response with user_name password user_name user_name password
         if not user_name:
             return jsonify({"message": "User name is mandatory"}), 400
@@ -773,7 +773,6 @@ class HeartbeatResource(Resource):
         # Time range check for scheduling
         start_time_str = weekdays_schedule.get("starttime")
         end_time_str = weekdays_schedule.get("endtime")
-
         if start_time_str and end_time_str and schedule:
             try:
                 time_format = "%H:%M:%S"
@@ -1226,8 +1225,8 @@ class Idletime(Resource):
 
         try:
             module = manager.module_status("sd-watcher-afk")
-            status = request.args.get("status")
-
+            status = json.loads(request.data)['status']
+            logger.info("Module ===============> " + str(module) + " <======Status=======> " + str(status))
             if module is None or "is_alive" not in module:
                 return {"message": "Module status could not be retrieved"}, 500
             state = False
@@ -1495,3 +1494,45 @@ class initdb(Resource):
 class server_status(Resource):
     def get(self):
         return 200
+
+@api.route("/0/fetch_logs")
+class FetchLogs(Resource):
+    def get(self):
+        
+        # Specify the Logs folder and output folder
+        logs_folder = r'C:\Users\balagurunadhaswamy\AppData\Local\Sundial\Sundial\Logs'
+        output_folder = os.path.join(os.getenv('USERPROFILE'), 'Desktop')
+
+        # Get today's date in YYYY-MM-DD format
+        today = datetime.datetime.now().strftime('%Y-%m-%d')
+        
+        # Create a temporary directory to store the filtered log files
+        temp_dir = os.path.join(output_folder, f"temp_logs_{today}")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Traverse through the logs folder and its subfolders
+        for root, _, files in os.walk(logs_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                
+                # Get the file's creation date
+                file_creation_date = datetime.datetime.fromtimestamp(os.path.getctime(file_path)).strftime('%Y-%m-%d')
+                
+                # If the file was created today, copy it to the temporary directory
+                if file_creation_date == today:
+                    # Preserve subfolder structure
+                    relative_path = os.path.relpath(root, logs_folder)
+                    target_folder = os.path.join(temp_dir, relative_path)
+                    os.makedirs(target_folder, exist_ok=True)
+                    shutil.copy2(file_path, target_folder)
+        
+        # Define the name of the zip file
+        zip_name = os.path.join(output_folder, f"Logs_{today}")
+        
+        # Create a ZIP archive
+        shutil.make_archive(zip_name, 'zip', temp_dir)
+        
+        # Clean up the temporary directory
+        shutil.rmtree(temp_dir)
+        
+        return f"{zip_name}.zip"
