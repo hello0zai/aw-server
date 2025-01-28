@@ -3,7 +3,7 @@ from itertools import groupby
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-import os
+import uuid
 from pathlib import Path
 from socket import gethostname
 import threading
@@ -206,7 +206,8 @@ class ServerAPI:
 
          @return A : class : ` Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -229,7 +230,8 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -257,7 +259,8 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -286,9 +289,9 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {}
+        max_address = hex(uuid.getnode())
+        headers = {"X-SUNDIAL-MAC-ADDRESS": max_address}
         payload = {}
-
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -309,7 +312,8 @@ class ServerAPI:
 
          @return A : class : ` req. Response ` object
         """
-        headers = {"Content-type": "application/json"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "X-SUNDIAL-MAC-ADDRESS": max_address}
         if params:
             headers.update(params)
         return req.delete(self._url(endpoint), data=json.dumps(data), headers=headers)
